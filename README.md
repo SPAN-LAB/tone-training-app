@@ -27,7 +27,7 @@ This application is designed to help users practice and improve their ability to
 
 2. Navigate to the project directory in your terminal or command prompt.
    ```
-      cd tone-training-app
+   cd tone-training-app
    ```
 
 3. Create a virtual environment (recommended):
