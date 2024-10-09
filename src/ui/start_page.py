@@ -1,13 +1,15 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox, QPushButton, QFileDialog, QSpacerItem, QSizePolicy
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox, QPushButton, QFileDialog, QSpacerItem, QSizePolicy, QMessageBox
 from PyQt5.QtCore import pyqtSignal, Qt
 import os
+import sounddevice as sd 
 
 class StartPage(QWidget):
-    start_training_signal = pyqtSignal(str, str, list)
+    start_training_signal = pyqtSignal(str, str, list, int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setup_ui()
+        self.sounds_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'resources', 'sounds')
 
     def setup_ui(self):
         main_layout = QVBoxLayout(self)
@@ -34,6 +36,14 @@ class StartPage(QWidget):
         type_layout.addWidget(self.training_type_combo)
         top_layout.addLayout(type_layout)
 
+        # Audio device selection
+        device_layout = QHBoxLayout()
+        self.audio_device_label = QLabel("Select Audio Device:")
+        self.audio_device_combo = QComboBox()
+        self.populate_audio_devices()
+        device_layout.addWidget(self.audio_device_label)
+        device_layout.addWidget(self.audio_device_combo)
+        main_layout.addLayout(device_layout)
         main_layout.addLayout(top_layout)
 
         # Add a spacer to push the buttons to the bottom
@@ -57,16 +67,37 @@ class StartPage(QWidget):
 
         self.sounds = []
 
+
+    def populate_audio_devices(self):
+        devices = sd.query_devices()
+        self.output_devices = []
+        for i, d in enumerate(devices):
+            if d['max_output_channels'] > 0:
+                device_info = f"{d['name']} - {d['hostapi']} (ID: {i})"
+                self.output_devices.append((device_info, i))
+        
+        self.audio_device_combo.clear()
+        self.audio_device_combo.addItems([info for info, _ in self.output_devices])
+       
     def load_sounds(self):
-        folder = QFileDialog.getExistingDirectory(self, "Select Folder Containing Sound Files")
+        folder = QFileDialog.getExistingDirectory(self, "Select Folder Containing Sound Files", self.sounds_dir)
         if folder:
-            self.sounds = [f for f in os.listdir(folder) if f.endswith('.wav')]
+            self.sounds = [os.path.join(folder, f) for f in os.listdir(folder) if f.endswith('.wav')]
+            sound_files = "\n".join(os.path.basename(s) for s in self.sounds)
+            message = f"Selected folder: {folder}\n\nSound files:\n{sound_files}"
+            QMessageBox.information(self, "Sounds Loaded", message)
             print(f"Loaded {len(self.sounds)} sound files.")
 
     def start_training(self):
         participant_id = self.participant_id_input.text()
         training_type = self.training_type_combo.currentText()
-        if participant_id and self.sounds:
-            self.start_training_signal.emit(participant_id, training_type, self.sounds)
+        selected_device_index = self.audio_device_combo.currentIndex()
+        if selected_device_index >= 0:
+            _, device_id = self.output_devices[selected_device_index]
         else:
-            print("Please enter a Participant ID and load sound files before starting.")
+            device_id = -1  # Use -1 as a sentinel value for no device selected
+
+        if participant_id and self.sounds and device_id != -1:
+            self.start_training_signal.emit(participant_id, training_type, self.sounds, device_id)
+        else:
+            QMessageBox.warning(self, "Missing Information", "Please enter a Participant ID, load sound files, and select an audio device before starting.")

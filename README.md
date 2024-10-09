@@ -1,15 +1,104 @@
-# Tone Training App
+# Tone Training Application
 
-This application is designed to train participants using different auditory feedback modes like production training and perception training with minimal or full feedback. 
+This application is designed to help users practice and improve their ability to recognize and produce different tones. It supports various training modes and allows users to select their preferred audio output device.
 
 ## Features
 - **Perception with Minimal Feedback**: Participants hear sounds and respond with minimal feedback on correctness.
 - **Perception with Full Feedback**: Participants get full feedback on their responses, including whether they were right or wrong.
 - **Production Training**: Participants replicate sounds and get feedback based on how accurately they reproduce them.
 
-## Setup
+## Table of Contents
+1. [Prerequisites](#prerequisites)
+2. [Installation](#installation)
+3. [Running the Application](#running-the-application)
+4. [Listing Audio Devices](#listing-audio-devices)
+5. [Troubleshooting](#troubleshooting)
 
-1. Clone the repository:
+## Prerequisites
+
+- Python 3.7 or higher
+- pip (Python package installer)
+
+## Installation
+
+1. Clone this repository or download the source code.
    ```bash
    git clone https://github.com/yourusername/tone-training-app.git
-   cd tone-training-app
+
+2. Navigate to the project directory in your terminal or command prompt.
+   ```
+      cd tone-training-app
+   ```
+
+3. Create a virtual environment (recommended):
+   ```
+   python -m venv venv
+   ```
+
+4. Activate the virtual environment:
+   - On Windows:
+     ```
+     venv\Scripts\activate
+     ```
+   - On macOS and Linux:
+     ```
+     source venv/bin/activate
+     ```
+
+5. Install the required packages:
+   ```
+   pip install -r requirements.txt
+   ```
+
+## Running the Application
+
+1. Ensure your virtual environment is activated.
+
+2. Run the main script:
+   ```
+   python src/main.py
+   ```
+
+3. The application window should appear. Follow the on-screen instructions to:
+   - Enter a Participant ID
+   - Select a Training Type
+   - Choose an Audio Output Device
+   - Load sound files
+   - Start the training session
+
+## Listing Audio Devices
+
+To view all available audio devices on your system, you can use the provided script:
+
+1. Ensure your virtual environment is activated.
+
+2. Run the audio device listing script:
+   ```
+   python scripts/list_audio_devices.py
+   ```
+
+This will display a list of all audio devices recognized by your system, including their IDs, names, and host APIs.
+
+Alternatively, you can use Python's interactive shell:
+
+1. Open a Python interactive shell:
+   ```
+   python
+   ```
+
+2. Enter the following commands:
+   ```python
+   import sounddevice as sd
+   devices = sd.query_devices()
+   for i, dev in enumerate(devices):
+       print(f"ID: {i}, Name: {dev['name']}, Host API: {dev['hostapi']}")
+   ```
+
+## Troubleshooting
+
+- If you encounter issues with audio playback, ensure that the selected audio device is correctly connected and recognized by your operating system.
+- Verify that the sound files are in a supported format (WAV is recommended).
+- If you're having trouble with a specific audio device, try selecting a different one from the dropdown menu in the application.
+- For any persistent issues, check the console output for error messages, which can provide more details about the problem.
+
+If you continue to experience problems, please open an issue on the project's GitHub repository with details about your system configuration and the specific error you're encountering.
