@@ -98,6 +98,7 @@ Alternatively, you can use Python's interactive shell:
 
 ### Virtual Environment Issues
 
+<<<<<<< HEAD
 If you encounter issues with the virtual environment, such as path errors or inability to run Python or pip, follow these steps to recreate your virtual environment:
 
 1. **Remove the Existing Virtual Environment**:
@@ -160,4 +161,6 @@ If you need to recreate the exact environment on another machine:
 * If you're using an IDE, make sure it's configured to use the correct Python interpreter from your virtual environment.
 
 If you continue to experience issues after following these steps, please open an issue on the project's GitHub repository with details about your system configuration and the specific error you're encountering.
-
+=======
+If you continue to experience problems, please open an issue on the project's GitHub repository with details about your system configuration and the specific error you're encountering.
+>>>>>>> 50563bceaff35b565c7e519268ae9094f1fd3faa
