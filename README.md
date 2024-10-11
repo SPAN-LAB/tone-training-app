@@ -30,9 +30,20 @@ This application is designed to help users practice and improve their ability to
       cd tone-training-app
    ```
 
+* Note that the following instruction is a work in progress solution.
+
 3. Create a virtual environment (recommended):
+
+   Windows:
    ```
    python -m venv venv
+   ```
+
+
+   Mac:
+   ```bash
+   conda create -y --prefix ./env python=3.9 pyqt=5.15.2
+   conda activate <path to the tone training folder>/env
    ```
 
 4. Activate the virtual environment:
@@ -42,12 +53,19 @@ This application is designed to help users practice and improve their ability to
      ```
    - On macOS and Linux:
      ```
-     source venv/bin/activate
+     conda activate env
      ```
 
 5. Install the required packages:
+   Windows:
    ```
    pip install -r requirements.txt
+   ```
+
+   Mac:
+   ```bash
+   pip install sounddevice
+   pip install soundfile  
    ```
 
 ## Running the Application
