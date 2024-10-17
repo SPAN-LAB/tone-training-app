@@ -16,7 +16,7 @@ This application is designed to help users practice and improve their ability to
 
 ## Prerequisites
 
-- Python 3.7 or higher
+- Python 3.7 or higher 
 - pip (Python package installer)
 
 ## Installation
