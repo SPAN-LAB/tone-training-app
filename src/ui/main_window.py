@@ -7,7 +7,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Tone Training Application")
-        self.setFixedSize(400, 300)
+        self.setFixedSize(600, 300)
 
         # Disable the maximize button
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
