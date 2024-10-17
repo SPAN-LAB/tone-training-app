@@ -30,9 +30,20 @@ This application is designed to help users practice and improve their ability to
       cd tone-training-app
    ```
 
+* Note that the following instruction is a work in progress solution.
+
 3. Create a virtual environment (recommended):
+
+   Windows:
    ```
    python -m venv venv
+   ```
+
+
+   Mac:
+   ```bash
+   conda create -y --prefix ./env python=3.9 pyqt=5.15.2
+   conda activate <path to the tone training folder>/env
    ```
 
 4. Activate the virtual environment:
@@ -42,12 +53,19 @@ This application is designed to help users practice and improve their ability to
      ```
    - On macOS and Linux:
      ```
-     source venv/bin/activate
+     conda activate env
      ```
 
 5. Install the required packages:
+   Windows:
    ```
    pip install -r requirements.txt
+   ```
+
+   Mac:
+   ```bash
+   pip install sounddevice
+   pip install soundfile  
    ```
 
 ## Running the Application
@@ -101,4 +119,54 @@ Alternatively, you can use Python's interactive shell:
 - If you're having trouble with a specific audio device, try selecting a different one from the dropdown menu in the application.
 - For any persistent issues, check the console output for error messages, which can provide more details about the problem.
 
-If you continue to experience problems, please open an issue on the project's GitHub repository with details about your system configuration and the specific error you're encountering.
+### Virtual Environment Issues:
+If you encounter issues with the virtual environment, such as path errors or inability to run Python or pip, follow these steps to recreate your virtual environment:
+1. **Remove the Existing Virtual Environment**:
+   * Navigate to your project folder and delete the `venv/` folder.
+2. **Create a New Virtual Environment**:
+   * Open a terminal or command prompt in your project directory and run:
+     ```
+     python -m venv venv
+     ```
+3. **Activate the New Virtual Environment**:
+   * On Windows:
+     ```
+     venv\Scripts\activate
+     ```
+   * On macOS and Linux:
+     ```
+     source venv/bin/activate
+     ```
+4. **Reinstall Project Dependencies**:
+   * If you have a `requirements.txt` file:
+     ```
+     pip install -r requirements.txt
+     ```
+5. **Verify the Installation**:
+   * Run the following command to list installed packages:
+     ```
+     pip list
+     ```
+6. **Run the Application**:
+   * Try running the application again:
+     ```
+     python src/main.py
+     ```
+     
+### Recreating the Virtual Environment
+If you need to recreate the exact environment on another machine:
+1. **Generate `requirements.txt`** (for project maintainers):
+   * Activate the virtual environment and run:
+     ```
+     pip freeze > requirements.txt
+     ```
+2. **Install Dependencies from `requirements.txt`**:
+   * After creating and activating a new virtual environment, run:
+     ```
+     pip install -r requirements.txt
+     ```
+
+### Additional Tips
+* Ensure that your system Python installation is correctly set up and accessible via the command line.
+* Always activate the virtual environment before working on the project or running commands.
+* If you're using an IDE, make sure it's configured to use the correct Python interpreter from your virtual environment.
