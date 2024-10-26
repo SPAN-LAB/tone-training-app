@@ -46,8 +46,9 @@ class TrainingPage(QWidget):
         self.participant_id = participant_id
         self.training_type = training_type
         self.sounds = sounds
-        self.audio_device_id = device_id
-        self.next_sound()
+        self.audio_device_id = device_id  # Use device_id to select the correct audio device
+        self.next_sound()  # Start with the first sound in the list
+
 
     def next_sound(self):
         if self.sounds:
@@ -63,16 +64,31 @@ class TrainingPage(QWidget):
     def play_sound(self):
         if self.current_sound:
             try:
-                full_path = os.path.abspath(self.current_sound)
-                # Set the audio device
-                sd.default.device = self.audio_device_id
-                # Load and play the sound file
+                # Construct the full path within resources/sounds and ensure .mp3 extension
+                full_path = os.path.join("R:\\projects\\tone-training-app\\resources\\sounds", self.current_sound)
+                if not full_path.endswith(".mp3"):
+                    full_path += "_MP3.mp3"  # Append .mp3 extension if missing
+
+                # Check if the file actually exists
+                if not os.path.isfile(full_path):
+                    raise FileNotFoundError(f"File not found: {full_path}")
+
+                # Read the sound file to determine its sample rate and number of channels
                 data, fs = sf.read(full_path, dtype='float32')
-                sd.play(data, fs, blocking=True)
+
+                # Set the audio device and play the sound with the correct number of channels
+                sd.default.device = self.audio_device_id
+                sd.play(data, fs, blocking=True)  # Specify channels to match the file
+
+                # Update UI after playback
                 self.prompt_label.setText("Select the sound you heard")
                 self.play_button.setEnabled(False)
                 for button in self.response_buttons:
                     button.setEnabled(True)
+
+            except FileNotFoundError as fnf_error:
+                print(f"Error: {fnf_error}")
+                self.prompt_label.setText("Error: Sound file not found")
             except Exception as e:
                 print(f"Error playing sound: {e}")
                 self.prompt_label.setText("Error playing sound")
