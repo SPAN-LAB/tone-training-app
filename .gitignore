@@ -85,3 +85,6 @@ coverage.xml
 # Audio files
 .mp3
 .wav
+
+# Folders
+resources/
