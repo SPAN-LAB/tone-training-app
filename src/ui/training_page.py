@@ -1,10 +1,14 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 import sounddevice as sd
 import soundfile as sf
 import os
+import re
 
 class TrainingPage(QWidget):
+    # Signal emitted to end training and display results
+    end_training_signal = pyqtSignal(str, str, float)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setup_ui()
@@ -13,6 +17,8 @@ class TrainingPage(QWidget):
         self.participant_id = ""
         self.training_type = ""
         self.audio_device = None
+        self.correct_answers = 0
+        self.total_questions = 0
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -46,9 +52,12 @@ class TrainingPage(QWidget):
         self.participant_id = participant_id
         self.training_type = training_type
         self.sounds = sounds
-        self.audio_device_id = device_id  # Use device_id to select the correct audio device
+        self.audio_device_id = (
+            device_id  # Use device_id to select the correct audio device
+        )
+        self.correct_answers = 0
+        self.total_questions = len(sounds)
         self.next_sound()  # Start with the first sound in the list
-
 
     def next_sound(self):
         if self.sounds:
@@ -65,7 +74,10 @@ class TrainingPage(QWidget):
         if self.current_sound:
             try:
                 # Construct the full path within resources/sounds and ensure .mp3 extension
-                full_path = os.path.join("R:\\projects\\tone-training-app\\resources\\sounds", self.current_sound)
+                full_path = os.path.join(
+                    "R:\\projects\\tone-training-app\\resources\\sounds",
+                    self.current_sound,
+                )
                 if not full_path.endswith(".mp3"):
                     full_path += "_MP3.mp3"  # Append .mp3 extension if missing
 
@@ -74,7 +86,7 @@ class TrainingPage(QWidget):
                     raise FileNotFoundError(f"File not found: {full_path}")
 
                 # Read the sound file to determine its sample rate and number of channels
-                data, fs = sf.read(full_path, dtype='float32')
+                data, fs = sf.read(full_path, dtype="float32")
 
                 # Set the audio device and play the sound with the correct number of channels
                 sd.default.device = self.audio_device_id
@@ -96,10 +108,10 @@ class TrainingPage(QWidget):
             print("No sound loaded")
 
     def process_response(self, response):
-        # TODO: Implement actual response processing
-        correct_answer = 2  # This should be determined based on the current sound
+        correct_answer = int(re.findall("[0-9]+", self.current_sound)[0])
         is_correct = response == correct_answer
-
+        if is_correct:
+            self.correct_answers += 1
         self.provide_feedback(is_correct, correct_answer)
         QTimer.singleShot(1000, self.next_sound)  # Move to next sound after 1 second
 
@@ -107,11 +119,15 @@ class TrainingPage(QWidget):
         if self.training_type == "Perception with Minimal Feedback":
             self.feedback_label.setText("Correct" if is_correct else "Incorrect")
         elif self.training_type == "Perception with Full Feedback":
-            self.feedback_label.setText(f"Correct" if is_correct else f"Incorrect. The correct answer was {correct_answer}")
+            self.feedback_label.setText(
+                f"Correct"
+                if is_correct
+                else f"Incorrect. The correct answer was {correct_answer}"
+            )
         else:
             # TODO: Implement production training feedback
             pass
 
     def finish_training(self):
-        print("Training finished")
-        # TODO: Implement what happens when training is finished (e.g., show results, return to start page)
+        score = (self.correct_answers / self.total_questions) * 100
+        self.end_training_signal.emit(self.participant_id, self.training_type, score)

@@ -2,6 +2,7 @@ from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QStackedWidget
 from PyQt5.QtCore import Qt
 from .start_page import StartPage
 from .training_page import TrainingPage
+from .feedback_page import FeedbackPage
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -20,16 +21,20 @@ class MainWindow(QMainWindow):
         self.stacked_widget = QStackedWidget()
         self.layout.addWidget(self.stacked_widget)
 
-        # Initialize Start Page and Training Page
+        # Initialize Start Page, Training Page, and Feedback Page
         self.start_page = StartPage(self)
         self.training_page = TrainingPage(self)
+        self.feedback_page = FeedbackPage(self)
 
-        # Add both pages to the stacked widget
+        # Add pages to the stacked widget
         self.stacked_widget.addWidget(self.start_page)
         self.stacked_widget.addWidget(self.training_page)
+        self.stacked_widget.addWidget(self.feedback_page)
 
-        # Connect the start_training_signal from StartPage to start_training method
+        # Connect signals
         self.start_page.start_training_signal.connect(self.start_training)
+        self.training_page.end_training_signal.connect(self.finish_training)
+        self.feedback_page.return_to_start_signal.connect(self.return_to_start)
 
     def start_training(self, participant_id, training_type, sounds, device_id):
         # Set up training session in the training page with all necessary parameters
@@ -37,3 +42,12 @@ class MainWindow(QMainWindow):
         
         # Switch to the training page
         self.stacked_widget.setCurrentWidget(self.training_page)
+
+    def finish_training(self, participant_id, training_type, score):
+        # Send feedback data to FeedbackPage
+        self.feedback_page.set_feedback_data(participant_id, training_type, score)
+        self.stacked_widget.setCurrentWidget(self.feedback_page)
+
+    def return_to_start(self):
+        # Return to StartPage
+        self.stacked_widget.setCurrentWidget(self.start_page)
