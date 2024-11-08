@@ -24,6 +24,7 @@ class TrainingPage(QWidget):
         self.is_recording = False  # Track if recording is active
         self.recorded_audio_path = "temp_recording.mp3"  # Temporary storage for recordings
         self.response_buttons = None
+        self.record_button = None
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -105,6 +106,7 @@ class TrainingPage(QWidget):
             self.play_button.setEnabled(True)
             if self.training_type == "Production Training":
                 self.record_button.setEnabled(False)  # Enable after playback
+                print("Record button set to False")
             # Conditionally handle response buttons only if they exist (Perception Training)
             if self.response_buttons is not None:
                 for button in self.response_buttons:
@@ -139,6 +141,18 @@ class TrainingPage(QWidget):
                 if self.training_type == "Production Training":
                     self.prompt_label.setText("Try to reproduce the sound and press 'Start Recording'")
                     self.record_button.setEnabled(True)
+                    print(self.record_button)
+                    print("Record button enabled.")
+                    def get_button_ids(parent_widget):
+                        button_ids = []
+                        # Loop through all child widgets of the parent widget
+                        for child in parent_widget.findChildren(QPushButton):
+                            # Check if the widget has an object name set and add it to the list
+                            button_ids.append(child.objectName())
+                        return button_ids
+                    
+                    button_ids = get_button_ids(self)
+                    print("Button IDs on the current page:", button_ids)
                 else:
                     self.prompt_label.setText("Select the sound you heard")
                     self.play_button.setEnabled(False)
@@ -157,6 +171,7 @@ class TrainingPage(QWidget):
 
     def toggle_recording(self):
         # Start or stop recording based on current state
+        print("in toggle_recording")
         if not self.is_recording:
             self.start_recording()
         else:

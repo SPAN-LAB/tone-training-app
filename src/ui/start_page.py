@@ -1,7 +1,8 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox, QPushButton, QFileDialog, QSpacerItem, QSizePolicy, QMessageBox
 from PyQt5.QtCore import pyqtSignal, Qt
 import os
-import sounddevice as sd 
+import sounddevice as sd
+from .volume_check_page import VolumeCheckPage 
 
 class StartPage(QWidget):
     # Signal emitted to start training, sending participant_id, training_type, sounds, device_id, and input_device_id
@@ -13,6 +14,7 @@ class StartPage(QWidget):
         # Directory where sounds are located by default
         self.sounds_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'resources', 'sounds')
         self.sounds = []  # Initialize sounds list
+        self.volume_check_page = None 
 
     def setup_ui(self):
         main_layout = QVBoxLayout(self)
@@ -137,9 +139,19 @@ class StartPage(QWidget):
         
         # Emit signal if all information is available, otherwise show a warning
         if participant_id and self.sounds and device_id != -1:
-            if training_type == "Production Training" and input_device_id == -1:
-                QMessageBox.warning(self, "Missing Information", "Please select an audio input device for Production Training.")
-            else:
+            if training_type == "Production Training":
+                if input_device_id == -1:
+                    QMessageBox.warning(self, "Missing Information", "Please select an audio input device for Production Training.")
+                else:
+                    self.volume_check_page = VolumeCheckPage(threshold=-20, input_device_id=input_device_id)
+                    self.volume_check_page.volume_check_complete.connect(lambda: self.start_production_training(participant_id, training_type, device_id, input_device_id))
+                    self.volume_check_page.start_volume_check()
+                    self.volume_check_page.show()
                 self.start_training_signal.emit(participant_id, training_type, self.sounds, device_id, input_device_id)
         else:
-            QMessageBox.warning(self, "Missing Information", "Please enter a Participant ID, load sound files, and select an audio output device before starting.")
+            QMessageBox.warning(self, "Missing Information", "Please enter a Participant ID, load sound files, and select an audio output device before starting.")          
+
+    def start_production_training(self, participant_id, training_type, device_id, input_device_id):
+        # Emit start training signal after volume check is passed
+        self.volume_check_page.close()  # Close the VolumeCheckPage
+        self.start_training_signal.emit(participant_id, training_type, self.sounds, device_id, input_device_id)
