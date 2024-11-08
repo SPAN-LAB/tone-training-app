@@ -4,7 +4,6 @@ import sounddevice as sd
 import soundfile as sf
 import os
 import re
-import datetime
 
 class TrainingPage(QWidget):
     # Signal emitted to end training and display results
@@ -12,13 +11,12 @@ class TrainingPage(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        # self.setup_ui()
+        self.setup_ui()
         self.current_sound = None
         self.sounds = []
         self.participant_id = ""
         self.training_type = ""
-        self.audio_device_id = None
-        self.input_device_id = None  # New attribute for input device ID
+        self.audio_device = None
         self.correct_answers = 0
         self.total_questions = 0
         self.is_recording = False  # Track if recording is active
@@ -54,49 +52,15 @@ class TrainingPage(QWidget):
         self.feedback_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.feedback_label)
 
-    def setup_production_training(self):
-        """Setup UI for Production Training"""
-        layout = QVBoxLayout(self)
-
-        # Prompt label with production-specific instructions
-        self.prompt_label = QLabel("Listen to the sound, then reproduce it.")
-        self.prompt_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.prompt_label)
-
-        # Play button
-        self.play_button = QPushButton("Play Sound")
-        self.play_button.clicked.connect(self.play_sound)
-        layout.addWidget(self.play_button)
-
-        # Record button
-        self.record_button = QPushButton("Start Recording")
-        self.record_button.clicked.connect(self.toggle_recording)
-        layout.addWidget(self.record_button)
-
-        # Visualization label
-        self.visualization_label = QLabel("Visual feedback will be displayed here.")
-        self.visualization_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.visualization_label)
-
-        # Feedback label for text feedback on reproduction accuracy
-        self.feedback_label = QLabel("")
-        self.feedback_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.feedback_label)
-
-    def setup_training(self, participant_id, training_type, sounds, device_id, input_device_id=None):
+    def setup_training(self, participant_id, training_type, sounds, device_id):
         self.participant_id = participant_id
         self.training_type = training_type
         self.sounds = sounds
-        self.audio_device_id = device_id  # Output device
-        self.input_device_id = input_device_id  # Input device for recording
+        self.audio_device_id = (
+            device_id  # Use device_id to select the correct audio device
+        )
         self.correct_answers = 0
         self.total_questions = len(sounds)
-        
-        if training_type == "Production Training":
-            self.setup_production_training()
-        else:
-            self.setup_ui()
-
         self.next_sound()  # Start with the first sound in the list
 
     def next_sound(self):
@@ -104,6 +68,8 @@ class TrainingPage(QWidget):
             self.current_sound = self.sounds.pop(0)
             self.prompt_label.setText("Click 'Play Sound' to listen")
             self.play_button.setEnabled(True)
+            for button in self.response_buttons:
+                button.setEnabled(False)
             if self.training_type == "Production Training":
                 self.record_button.setEnabled(False)  # Enable after playback
                 print("Record button set to False")
@@ -214,7 +180,7 @@ class TrainingPage(QWidget):
         self.provide_feedback(is_correct, correct_answer)
         QTimer.singleShot(1000, self.next_sound)  # Move to next sound after 1 second
 
-    def provide_feedback(self, is_correct=None, correct_answer=None):
+    def provide_feedback(self, is_correct, correct_answer):
         if self.training_type == "Perception with Minimal Feedback":
             self.feedback_label.setText("Correct" if is_correct else "Incorrect")
         elif self.training_type == "Perception with Full Feedback":
@@ -223,10 +189,9 @@ class TrainingPage(QWidget):
                 if is_correct
                 else f"Incorrect. The correct answer was {correct_answer}"
             )
-        elif self.training_type == "Production Training":
-            # Placeholder feedback for production training; implement actual comparison feedback
-            self.feedback_label.setText("Feedback: Good attempt! Try to match the pitch more closely.")
-        QTimer.singleShot(1000, self.next_sound)
+        else:
+            # TODO: Implement production training feedback
+            pass
 
     def finish_training(self):
         score = (self.correct_answers / self.total_questions) * 100
