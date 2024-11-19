@@ -7,9 +7,9 @@ class VolumeCheckPage(QWidget):
     # Signal emitted when volume check is complete, sending success flag to proceed
     volume_check_complete = pyqtSignal(bool)
 
-    def __init__(self, threshold=-20, input_device_id=None, parent=None):
+    def __init__(self, input_device_id=None, parent=None):
         super().__init__(parent)
-        self.threshold = threshold  # dB threshold for volume level
+        self.threshold = -20  # dB threshold for volume level
         self.silence_threshold = -10  # dB level below which is considered silence
         self.input_device_id = input_device_id
         self.volume_level = -100  # Initial volume level
@@ -56,7 +56,6 @@ class VolumeCheckPage(QWidget):
         if self.volume_level > self.silence_threshold:
             try:
                 # Update progress bar only when volume exceeds silence threshold
-                # volume_percent = int((self.volume_level + 100) / 100 * 100)
                 volume_percent = int((self.volume_level - self.silence_threshold) / (0 - self.silence_threshold) * 100)
                 volume_percent = min(max(volume_percent, 0), 100)  # Ensure within 0-100 bounds
                 self.volume_bar.setValue(volume_percent)

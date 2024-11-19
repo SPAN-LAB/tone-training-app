@@ -1,12 +1,14 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox, QPushButton, QFileDialog, QSpacerItem, QSizePolicy, QMessageBox
 from PyQt5.QtCore import pyqtSignal, Qt
 import os
-import sounddevice as sd
-from .volume_check_page import VolumeCheckPage 
+import sounddevice as sd 
 
 class StartPage(QWidget):
-    # Signal emitted to start training, sending participant_id, training_type, sounds, and device_id
-    start_training_signal = pyqtSignal(str, str, list, int)
+    # Signal emitted to start training, sending participant_id, training_type, sounds, output device id, and input device id
+    start_training_signal = pyqtSignal(str, str, list, int, int)
+
+    # Signal emitted to start sound checking, sending output device id
+    volume_check_signal = pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -14,7 +16,6 @@ class StartPage(QWidget):
         # Directory where sounds are located by default
         self.sounds_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'resources', 'sounds')
         self.sounds = []  # Initialize sounds list
-        self.volume_check_page = None 
 
     def setup_ui(self):
         main_layout = QVBoxLayout(self)
@@ -36,19 +37,33 @@ class StartPage(QWidget):
         type_layout = QHBoxLayout()
         self.training_type_label = QLabel("Select Training Type:")
         self.training_type_combo = QComboBox()
-        self.training_type_combo.addItems(["Production Training", "Perception with Minimal Feedback", "Perception with Full Feedback"])
+        self.training_type_combo.addItems(["Perception with Minimal Feedback", "Perception with Full Feedback", "Production Training"])
+        self.training_type_combo.currentIndexChanged.connect(self.toggle_input_device_selection)
         type_layout.addWidget(self.training_type_label)
         type_layout.addWidget(self.training_type_combo)
         top_layout.addLayout(type_layout)
 
         # Audio device selection
         device_layout = QHBoxLayout()
-        self.audio_device_label = QLabel("Select Audio Device:")
+        self.audio_device_label = QLabel("Select Audio Output Device:")
         self.audio_device_combo = QComboBox()
         self.populate_audio_devices()
         device_layout.addWidget(self.audio_device_label)
         device_layout.addWidget(self.audio_device_combo)
         main_layout.addLayout(device_layout)
+        main_layout.addLayout(top_layout)
+
+        # Audio input device selection (only shown for Production Training)
+        input_device_layout = QHBoxLayout()
+        self.audio_input_device_label = QLabel("Select Audio Input Device:")
+        self.audio_input_device_combo = QComboBox()
+        self.populate_input_devices()
+        input_device_layout.addWidget(self.audio_input_device_label)
+        input_device_layout.addWidget(self.audio_input_device_combo)
+        main_layout.addLayout(input_device_layout)
+        self.audio_input_device_label.hide()
+        self.audio_input_device_combo.hide()
+
         main_layout.addLayout(top_layout)
 
         # Spacer to push buttons to the bottom
@@ -70,6 +85,15 @@ class StartPage(QWidget):
 
         main_layout.addLayout(button_layout)
 
+    def toggle_input_device_selection(self):
+        """Toggle input device visibility based on training type selection."""
+        if self.training_type_combo.currentText() == "Production Training":
+            self.audio_input_device_label.show()
+            self.audio_input_device_combo.show()
+        else:
+            self.audio_input_device_label.hide()
+            self.audio_input_device_combo.hide()
+
     def populate_audio_devices(self):
         # Populate the audio device selection dropdown
         devices = sd.query_devices()
@@ -82,8 +106,20 @@ class StartPage(QWidget):
         self.audio_device_combo.clear()
         self.audio_device_combo.addItems([info for info, _ in self.output_devices])
        
+    def populate_input_devices(self):
+        # Populate the audio input device selection dropdown
+        devices = sd.query_devices()
+        self.input_devices = []
+        for i, d in enumerate(devices):
+            if d['max_input_channels'] > 0:
+                device_info = f"{d['name']} - {d['hostapi']} (ID: {i})"
+                self.input_devices.append((device_info, i))
+        
+        self.audio_input_device_combo.clear()
+        self.audio_input_device_combo.addItems([info for info, _ in self.input_devices])
+
     def load_sounds(self):
-        # Open a dialog to select the sound folder and load .wav files
+        # Open a dialog to select the sound folder and load .mp3 files
         folder = QFileDialog.getExistingDirectory(self, "Select Folder Containing Sound Files", self.sounds_dir)
         if folder:
             self.sounds = [os.path.join(folder, f) for f in os.listdir(folder) if f.endswith('.mp3')]
@@ -92,32 +128,35 @@ class StartPage(QWidget):
             QMessageBox.information(self, "Sounds Loaded", message)
 
     def start_training(self):
-        # Collect participant information, training type, and audio device ID
-        participant_id = self.participant_id_input.text()
-        training_type = self.training_type_combo.currentText()
-        selected_device_index = self.audio_device_combo.currentIndex()
+        # Collect participant information, training type, and audio device IDs
+        self.participant_id = self.participant_id_input.text()
+        self.training_type = self.training_type_combo.currentText()
+        selected_output_index = self.audio_device_combo.currentIndex()
+        selected_input_index = self.audio_input_device_combo.currentIndex()
 
-        # Get device_id from selected audio device
-        if selected_device_index >= 0:
-            _, device_id = self.output_devices[selected_device_index]
+        # Get device_id for output and input
+        self.output_device_id = self.output_devices[selected_output_index][1] if selected_output_index >= 0 else -1
+        self.input_device_id = self.input_devices[selected_input_index][1] if selected_input_index >= 0 else -1
+        
+        # Emit signal to start training if all information is available, otherwise show a warning
+        if not self.participant_id:
+            QMessageBox.warning(self, "Missing Information", "Please enter a Participant ID.")
+            return
+
+        if not self.sounds:
+            QMessageBox.warning(self, "Missing Information", "Please load sound files before starting.")
+            return
+
+        if self.output_device_id == -1:
+            QMessageBox.warning(self, "Missing Information", "Please select an audio output device for training.")
+            return
+
+        if self.training_type == "Production Training":
+            if self.input_device_id == -1:
+                QMessageBox.warning(self, "Missing Information", "Please select an audio input device for production training.")
+            else:
+                # Emit signal to show the volume check page
+                self.volume_check_signal.emit(self.input_device_id)
         else:
-            device_id = -1  # Sentinel value for no device selected
-
-        # Emit signal if all information is available, otherwise show a warning
-        if participant_id and self.sounds and device_id != -1:
-            if training_type == "Production Training":
-                if input_device_id == -1:
-                    QMessageBox.warning(self, "Missing Information", "Please select an audio input device for Production Training.")
-                else:
-                    self.volume_check_page = VolumeCheckPage(threshold=-20, input_device_id=input_device_id)
-                    self.volume_check_page.volume_check_complete.connect(lambda: self.start_production_training(participant_id, training_type, device_id, input_device_id))
-                    self.volume_check_page.start_volume_check()
-                    self.volume_check_page.show()
-                self.start_training_signal.emit(participant_id, training_type, self.sounds, device_id, input_device_id)
-        else:
-            QMessageBox.warning(self, "Missing Information", "Please enter a Participant ID, load sound files, and select an audio output device before starting.")          
-
-    def start_production_training(self, participant_id, training_type, device_id, input_device_id):
-        # Emit start training signal after volume check is passed
-        self.volume_check_page.close()  # Close the VolumeCheckPage
-        self.start_training_signal.emit(participant_id, training_type, self.sounds, device_id, input_device_id)
+            # Directly emit start_training_signal for other training types
+            self.start_training_signal.emit(self.participant_id, self.training_type, self.sounds, self.output_device_id, self.input_device_id)
