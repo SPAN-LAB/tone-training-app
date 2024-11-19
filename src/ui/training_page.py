@@ -183,6 +183,7 @@ class TrainingPage(QWidget):
         sf.write(self.recorded_audio_path, self.recording, 44100)
         self.prompt_label.setText("Recording complete. Analyzing...")
         self.analyze_recording()
+        # TODO: Delete recording after analysis 
 
     def analyze_recording(self):
         # Placeholder: Implement pitch comparison and feedback display
@@ -209,7 +210,7 @@ class TrainingPage(QWidget):
                 else f"Incorrect. The correct answer was {correct_answer}"
             )
         elif self.training_type == "Production Training":
-            # Placeholder feedback for production training; implement actual comparison feedback
+            # TODO: Implement actual comparison feedback
             self.feedback_label.setText("Feedback: Good attempt! Try to match the pitch more closely.")
         QTimer.singleShot(1000, self.next_sound)
 
