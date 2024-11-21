@@ -24,7 +24,7 @@ jobs:
 
       - name: Unzip Resources
         run: |
-          unzip resources.zip -d .
+          unzip app.zip -d .
           ls -R  # List files to verify resources are extracted
 
       - name: Generate Version Info
