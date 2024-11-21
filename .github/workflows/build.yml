@@ -26,12 +26,19 @@ jobs:
         run: |
           python generate_version_info.py
 
+      # - name: Build Executable
+      #   run: |
+      #     pyinstaller --onefile --windowed --version-file=version_info.txt src/main.py
       - name: Build Executable
         run: |
-          pyinstaller --onefile --windowed --version-file=version_info.txt src/main.py
+          pyinstaller --onefile --windowed --version-file=version_info.txt \
+              --add-data "resources;resources" \
+              --add-data "src/ui;src/ui" \
+              --add-date "src/training;src/training"
+              src/main.py
 
       - name: Upload Executable to Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: PyQt5-Executable
+          name: Plasticity-Training
           path: dist/main.exe
