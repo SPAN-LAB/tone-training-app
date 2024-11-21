@@ -1,0 +1,3 @@
+([('main',
+   '/Volumes/gurindapalli/projects/tone-training-app/dist/main',
+   'EXECUTABLE')],)
