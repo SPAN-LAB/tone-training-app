@@ -26,8 +26,8 @@ VSVersionInfo(
                     StringStruct('CompanyName', 'UW-Madison SPAN Lab'),
                     StringStruct('FileDescription', 'Plasticity Training App'),
                     StringStruct('FileVersion', '{version}'),
-                    StringStruct('InternalName', 'Tone Training App'),
-                    StringStruct('OriginalFilename', 'main.exe'),
+                    StringStruct('InternalName', 'Plasticity Training App'),
+                    StringStruct('OriginalFilename', 'plasticity_training.exe'),
                     StringStruct('ProductName', 'Plasticity Training App'),
                     StringStruct('ProductVersion', '{version}')
                 ])
