@@ -9,8 +9,8 @@ class VolumeCheckPage(QWidget):
 
     def __init__(self, input_device_id=None, parent=None):
         super().__init__(parent)
-        self.threshold = -20  # dB threshold for volume level
-        self.silence_threshold = -10  # dB level below which is considered silence
+        self.threshold = -10  # dB threshold for volume level
+        self.silence_threshold = -5  # dB level below which is considered silence
         self.input_device_id = input_device_id
         self.volume_level = -100  # Initial volume level
 
