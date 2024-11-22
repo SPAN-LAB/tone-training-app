@@ -3,7 +3,7 @@ name: Build Plasticity Training App
 on:
   push:
     branches:
-      - develop # change this to main after setting up
+      - modify-github-action # change this to main after setting up
 
 jobs:
   build:
