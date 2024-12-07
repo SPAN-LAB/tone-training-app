@@ -3,7 +3,7 @@ name: Build Plasticity Training App
 on:
   push:
     branches:
-      - develop # change this to main after setting up
+      - main
 
 jobs:
   build:
@@ -25,11 +25,6 @@ jobs:
       - name: Install Dependencies
         run: |
           pip install pyinstaller PyQt5 sounddevice soundfile numpy cffi pycparser
-
-      # - name: Unzip Resources
-      #   run: |
-      #     unzip app.zip -d .
-      #     ls -R  # List files to verify resources are extracted
 
       - name: Generate Version Info
         run: |

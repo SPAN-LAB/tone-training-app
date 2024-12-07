@@ -5,25 +5,28 @@ import soundfile as sf
 import os
 import re
 import datetime
+import time
 from .volume_check_page import VolumeCheckPage
+import csv
 class TrainingPage(QWidget):
     # Signal emitted to end training and display results
     end_training_signal = pyqtSignal(str, str, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        # self.setup_ui()
         self.current_sound = None
         self.sounds = []
         self.participant_id = ""
         self.training_type = ""
         self.audio_device_id = None
-        self.input_device_id = None  # New attribute for input device ID
+        self.input_device_id = None  
         self.correct_answers = 0
         self.total_questions = 0
-        self.is_recording = False  # Track if recording is active
-        self.recorded_audio_path = "temp_recording.mp3"  # Temporary storage for recordings
+        self.is_recording = False  
+        self.recorded_audio_path = ""  # Temporary storage for users' recordings production training
         self.response_buttons = None
+        self.start_time = None
+        self.production_accuracy = 0
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -86,8 +89,8 @@ class TrainingPage(QWidget):
         self.participant_id = participant_id
         self.training_type = training_type
         self.sounds = sounds
-        self.audio_device_id = device_id  # Output device
-        self.input_device_id = input_device_id  # Input device for recording
+        self.audio_device_id = device_id  
+        self.input_device_id = input_device_id  
         self.correct_answers = 0
         self.total_questions = len(sounds)
         
@@ -135,6 +138,9 @@ class TrainingPage(QWidget):
                 sd.default.device = self.audio_device_id
                 sd.play(data, fs, blocking=True)  # Specify channels to match the file
 
+                # Get reaction starting time
+                self.start_time = time.time()
+
                 # Update UI after playback
                 if self.training_type == "Production Training":
                     self.prompt_label.setText("Try to reproduce the sound and press 'Start Recording'")
@@ -166,49 +172,83 @@ class TrainingPage(QWidget):
         self.is_recording = True
         self.record_button.setText("Stop Recording")
         self.prompt_label.setText("Recording... Try to match the original sound")
-        # Create `session_recordings` folder if it doesn't exist
-        os.makedirs("session_recordings", exist_ok=True)
-        # Start recording with sounddevice
-        # Create a unique file path with participant ID and timestamp
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.recorded_audio_path = f"session_recordings/{self.participant_id}_{timestamp}.mp3"
 
-        sd.default.device = (self.input_device_id, self.audio_device_id)  # Tuple (input, output)
-        self.recording = sd.rec(int(3 * 44100), samplerate=44100, channels=1)  # Adjust duration as needed
+        # Create session_recordings folder if it doesn't exist
+        participant_folder = os.path.join("participant_recordings", self.participant_id)
+        os.makedirs(participant_folder, exist_ok=True)
+
+        date = datetime.date.today()
+        file = self.current_sound.split("/")[-1]
+        file = file.split(".")[0]
+        self.recorded_audio_path = f"participant_recordings/{self.participant_id}/{date}_{file}.wav"
+
+        # Set default device
+        sd.default.device = (self.input_device_id, self.audio_device_id)  
+
+        # Record
+        self.recording = sd.rec(int(3 * 44100), samplerate=44100, channels=1)  
 
     def stop_recording(self):
         self.is_recording = False
         self.record_button.setText("Start Recording")
         sd.stop()
+
+        end_time = time.time()
+        reaction_time = end_time - self.start_time if self.start_time else 0
+
         sf.write(self.recorded_audio_path, self.recording, 44100)
         self.prompt_label.setText("Recording complete. Analyzing...")
+
+        # write to response file
+        self.write_response(self.participant_id, self.training_type, self.current_sound.split("/")[-1], 
+                            reaction_time, accuracy=self.production_accuracy)
+
         self.analyze_recording()
         # TODO: Delete recording after analysis 
 
     def analyze_recording(self):
+
         # Placeholder: Implement pitch comparison and feedback display
         self.visualization_label.setText("Comparing original and recorded pitch tracks...")
+
+        # TODO: Implement accuracy calculation
         
         # TODO: Display actual pitch track visualization and compute similarity
         self.provide_feedback()
 
+
     def process_response(self, response):
+
+        end_time = time.time()
+        reaction_time = end_time - self.start_time if self.start_time else 0
+
         correct_answer = int(re.findall("[0-9]+", self.current_sound)[0])
         is_correct = response == correct_answer
         if is_correct:
             self.correct_answers += 1
+
+        # display feedback on screen 
         self.provide_feedback(is_correct, correct_answer)
-        QTimer.singleShot(1000, self.next_sound)  # Move to next sound after 1 second
+
+        # write to response file
+        self.write_response(self.participant_id, self.training_type, self.current_sound.split("/")[-1], 
+                            reaction_time, response=response, solution=correct_answer)
+
+        # Move to next sound after 1 second
+        QTimer.singleShot(1000, self.next_sound)  
 
     def provide_feedback(self, is_correct=None, correct_answer=None):
+
         if self.training_type == "Perception with Minimal Feedback":
             self.feedback_label.setText("Correct" if is_correct else "Incorrect")
+
         elif self.training_type == "Perception with Full Feedback":
             self.feedback_label.setText(
                 f"Correct"
                 if is_correct
                 else f"Incorrect. The correct answer was {correct_answer}"
             )
+
         elif self.training_type == "Production Training":
             # TODO: Implement actual comparison feedback
             self.feedback_label.setText("Feedback: Good attempt! Try to match the pitch more closely.")
@@ -217,3 +257,36 @@ class TrainingPage(QWidget):
     def finish_training(self):
         score = (self.correct_answers / self.total_questions) * 100
         self.end_training_signal.emit(self.participant_id, self.training_type, score)
+
+    def write_response(self, participant_id, training, audio_file, reaction_time, response=0, solution=0, accuracy=0):
+
+        # Create participants folder if it doesn't exist
+        participant_folder = os.path.join("participants", participant_id)
+        os.makedirs(participant_folder, exist_ok=True)
+        
+        # Create training folder inside the participant's folder if it doesn't exist
+        training_folder = os.path.join(participant_folder, training)
+        os.makedirs(training_folder, exist_ok=True)
+        
+        # Define the response file path
+        response_file = os.path.join(training_folder, f"{datetime.date.today()}_resp.csv")
+        
+        # Check if the file already exists
+        file_exists = os.path.isfile(response_file)
+        
+        # Open the file in append mode and write the data
+        with open(response_file, mode="a", newline="") as csv_file:
+            csv_writer = csv.writer(csv_file)
+
+            if training != "Production Training":
+            
+                if not file_exists:
+                    csv_writer.writerow(["audio_file", "response", "solution", "reaction_time"])
+                
+                csv_writer.writerow([audio_file, response, solution, round(reaction_time, 4)])
+
+            else:
+                if not file_exists:
+                    csv_writer.writerow(["audio_file", "accuracy", "reaction_time"])
+                
+                csv_writer.writerow([audio_file, accuracy, round(reaction_time, 4)])
