@@ -37,9 +37,9 @@ class TrainingPage(QWidget):
         layout.addWidget(self.prompt_label)
 
         # Play button
-        self.play_button = QPushButton("Play Sound")
-        self.play_button.clicked.connect(self.play_sound)
-        layout.addWidget(self.play_button)
+        # self.play_button = QPushButton("Play Sound")
+        # self.play_button.clicked.connect(self.play_sound)
+        # layout.addWidget(self.play_button)
 
         # Response buttons
         response_layout = QHBoxLayout()
@@ -66,9 +66,9 @@ class TrainingPage(QWidget):
         layout.addWidget(self.prompt_label)
 
         # Play button
-        self.play_button = QPushButton("Play Sound")
-        self.play_button.clicked.connect(self.play_sound)
-        layout.addWidget(self.play_button)
+        # self.play_button = QPushButton("Play Sound")
+        # self.play_button.clicked.connect(self.play_sound)
+        # layout.addWidget(self.play_button)
 
         # Record button
         self.record_button = QPushButton("Start Recording")
@@ -99,26 +99,46 @@ class TrainingPage(QWidget):
         else:
             self.setup_ui()
 
-        self.next_sound()  # Start with the first sound in the list
+        print("In setup_training() in training_page.py")
+        print("After assign current sound: ", self.current_sound, self.sounds)
+        QTimer.singleShot(1000, self.play_sound)  
 
-    def next_sound(self):
-        if self.sounds:
-            self.current_sound = self.sounds.pop(0)
-            self.prompt_label.setText("Click 'Play Sound' to listen")
-            self.play_button.setEnabled(True)
-            if self.training_type == "Production Training":
-                self.record_button.setEnabled(False)  # Enable after playback
-            # Conditionally handle response buttons only if they exist (Perception Training)
-            if self.response_buttons is not None:
-                for button in self.response_buttons:
-                    button.setEnabled(False)
-            self.feedback_label.clear()
-        else:
-            self.finish_training()
+    # def next_sound(self):
+    #     print("In next sound")
+    #     if self.sounds:
+    #         self.current_sound = self.sounds.pop(0)
+    #         # self.prompt_label.setText("Click 'Play Sound' to listen")
+    #         # self.play_button.setEnabled(True)
+    #         if self.training_type == "Production Training":
+    #             self.record_button.setEnabled(False)  # Enable after playback
+    #         # Conditionally handle response buttons only if they exist (Perception Training)
+    #         if self.response_buttons is not None:
+    #             for button in self.response_buttons:
+    #                 button.setEnabled(False)
+    #         self.feedback_label.clear()
+    #     else:
+    #         self.finish_training()
 
     def play_sound(self):
-        if self.current_sound:
+        print("In play sound()")
+        print("Remaining sound file: ", [f for f in self.sounds])
+        print("Current sound: ", self.current_sound)
+
+        if self.sounds:
+            self.current_sound = self.sounds.pop(0)
+        # f self.current_sound:
+        # while self.current_sound:
             try:
+                # self.current_sound = self.sounds.pop(0)
+    
+                if self.training_type == "Production Training":
+                    self.record_button.setEnabled(False)  # Enable after playback
+
+                if self.response_buttons is not None:
+                    for button in self.response_buttons:
+                        button.setEnabled(False)
+                    self.feedback_label.clear()
+
                 # Construct the full path within resources/sounds and ensure .mp3 extension
                 full_path = os.path.join(
                     "R:\\projects\\tone-training-app\\resources\\sounds",
@@ -147,7 +167,7 @@ class TrainingPage(QWidget):
                     self.record_button.setEnabled(True)
                 else:
                     self.prompt_label.setText("Select the sound you heard")
-                    self.play_button.setEnabled(False)
+                    # self.play_button.setEnabled(False)
                     if self.response_buttons is not None:
                         for button in self.response_buttons:
                             button.setEnabled(True)
@@ -159,7 +179,8 @@ class TrainingPage(QWidget):
                 print(f"Error playing sound: {e}")
                 self.prompt_label.setText("Error playing sound")
         else:
-            print("No sound loaded")
+            self.finish_training()
+            # print("No sound loaded")
 
     def toggle_recording(self):
         # Start or stop recording based on current state
@@ -235,7 +256,8 @@ class TrainingPage(QWidget):
                             reaction_time, response=response, solution=correct_answer)
 
         # Move to next sound after 1 second
-        QTimer.singleShot(1000, self.next_sound)  
+        # QTimer.singleShot(1000, self.next_sound)  
+        QTimer.singleShot(1000, self.play_sound)  
 
     def provide_feedback(self, is_correct=None, correct_answer=None):
 
@@ -252,7 +274,7 @@ class TrainingPage(QWidget):
         elif self.training_type == "Production Training":
             # TODO: Implement actual comparison feedback
             self.feedback_label.setText("Feedback: Good attempt! Try to match the pitch more closely.")
-        # QTimer.singleShot(1000, self.next_sound)
+            QTimer.singleShot(1000, self.play_sound)
 
     def finish_training(self):
         score = (self.correct_answers / self.total_questions) * 100
