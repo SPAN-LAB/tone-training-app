@@ -36,11 +36,6 @@ class TrainingPage(QWidget):
         self.prompt_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.prompt_label)
 
-        # Play button
-        # self.play_button = QPushButton("Play Sound")
-        # self.play_button.clicked.connect(self.play_sound)
-        # layout.addWidget(self.play_button)
-
         # Response buttons
         response_layout = QHBoxLayout()
         self.response_buttons = []
@@ -65,15 +60,10 @@ class TrainingPage(QWidget):
         self.prompt_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.prompt_label)
 
-        # Play button
-        # self.play_button = QPushButton("Play Sound")
-        # self.play_button.clicked.connect(self.play_sound)
-        # layout.addWidget(self.play_button)
-
         # Record button
-        self.record_button = QPushButton("Start Recording")
-        self.record_button.clicked.connect(self.toggle_recording)
-        layout.addWidget(self.record_button)
+        # self.record_button = QPushButton("Start Recording")
+        # self.record_button.clicked.connect(self.toggle_recording)
+        # layout.addWidget(self.record_button)
 
         # Visualization label
         self.visualization_label = QLabel("Visual feedback will be displayed here.")
@@ -103,22 +93,6 @@ class TrainingPage(QWidget):
         print("After assign current sound: ", self.current_sound, self.sounds)
         QTimer.singleShot(1000, self.play_sound)  
 
-    # def next_sound(self):
-    #     print("In next sound")
-    #     if self.sounds:
-    #         self.current_sound = self.sounds.pop(0)
-    #         # self.prompt_label.setText("Click 'Play Sound' to listen")
-    #         # self.play_button.setEnabled(True)
-    #         if self.training_type == "Production Training":
-    #             self.record_button.setEnabled(False)  # Enable after playback
-    #         # Conditionally handle response buttons only if they exist (Perception Training)
-    #         if self.response_buttons is not None:
-    #             for button in self.response_buttons:
-    #                 button.setEnabled(False)
-    #         self.feedback_label.clear()
-    #     else:
-    #         self.finish_training()
-
     def play_sound(self):
         print("In play sound()")
         print("Remaining sound file: ", [f for f in self.sounds])
@@ -126,13 +100,10 @@ class TrainingPage(QWidget):
 
         if self.sounds:
             self.current_sound = self.sounds.pop(0)
-        # f self.current_sound:
-        # while self.current_sound:
-            try:
-                # self.current_sound = self.sounds.pop(0)
-    
-                if self.training_type == "Production Training":
-                    self.record_button.setEnabled(False)  # Enable after playback
+
+            try:    
+                # if self.training_type == "Production Training":
+                #     self.record_button.setEnabled(False)  # Enable after playback
 
                 if self.response_buttons is not None:
                     for button in self.response_buttons:
@@ -144,8 +115,10 @@ class TrainingPage(QWidget):
                     "R:\\projects\\tone-training-app\\resources\\sounds",
                     self.current_sound,
                 )
+
+                # Append .mp3 extension if missing
                 if not full_path.endswith(".mp3"):
-                    full_path += "_MP3.mp3"  # Append .mp3 extension if missing
+                    full_path += "_MP3.mp3"  
 
                 # Check if the file actually exists
                 if not os.path.isfile(full_path):
@@ -156,15 +129,18 @@ class TrainingPage(QWidget):
 
                 # Set the audio device and play the sound with the correct number of channels
                 sd.default.device = self.audio_device_id
-                sd.play(data, fs, blocking=True)  # Specify channels to match the file
+                sd.play(data, fs, blocking=True)  
 
                 # Get reaction starting time
                 self.start_time = time.time()
 
                 # Update UI after playback
                 if self.training_type == "Production Training":
-                    self.prompt_label.setText("Try to reproduce the sound and press 'Start Recording'")
-                    self.record_button.setEnabled(True)
+                    self.prompt_label.setText("Try to reproduce the sound")
+                    print("In play_sound(), within if stmt for production training")
+                    self.toggle_recording()
+                    # self.prompt_label.setText("Try to reproduce the sound and press 'Start Recording'")
+                    # self.record_button.setEnabled(True)
                 else:
                     self.prompt_label.setText("Select the sound you heard")
                     # self.play_button.setEnabled(False)
@@ -180,7 +156,6 @@ class TrainingPage(QWidget):
                 self.prompt_label.setText("Error playing sound")
         else:
             self.finish_training()
-            # print("No sound loaded")
 
     def toggle_recording(self):
         # Start or stop recording based on current state
@@ -191,7 +166,7 @@ class TrainingPage(QWidget):
 
     def start_recording(self):
         self.is_recording = True
-        self.record_button.setText("Stop Recording")
+        # self.record_button.setText("Stop Recording")
         self.prompt_label.setText("Recording... Try to match the original sound")
 
         # Create session_recordings folder if it doesn't exist
@@ -206,12 +181,31 @@ class TrainingPage(QWidget):
         # Set default device
         sd.default.device = (self.input_device_id, self.audio_device_id)  
 
-        # Record
-        self.recording = sd.rec(int(3 * 44100), samplerate=44100, channels=1)  
+        # Start recording and countdown timer
+        self.recording = sd.rec(int(3 * 44100), samplerate=44100, channels=1)
+        self.start_countdown(5)
+
+    def start_countdown(self, seconds):
+        self.remaining_time = seconds
+        self.prompt_label.setText(f"Recording... {self.remaining_time} seconds remaining")
+
+        # Create a timer that triggers every 1 second
+        self.countdown_timer = QTimer(self)
+        self.countdown_timer.timeout.connect(self.update_countdown)
+        self.countdown_timer.start(1000)
+    
+    # TODO: make start_countdown() and update_countdown() more general  
+    def update_countdown(self):
+        self.remaining_time -= 1
+        if self.remaining_time > 0:
+            self.prompt_label.setText(f"Recording... {self.remaining_time} seconds remaining")
+        else:
+            self.countdown_timer.stop()  # Stop the timer
+            self.stop_recording() 
 
     def stop_recording(self):
         self.is_recording = False
-        self.record_button.setText("Start Recording")
+        # self.record_button.setText("Start Recording")
         sd.stop()
 
         end_time = time.time()
@@ -256,7 +250,6 @@ class TrainingPage(QWidget):
                             reaction_time, response=response, solution=correct_answer)
 
         # Move to next sound after 1 second
-        # QTimer.singleShot(1000, self.next_sound)  
         QTimer.singleShot(1000, self.play_sound)  
 
     def provide_feedback(self, is_correct=None, correct_answer=None):
