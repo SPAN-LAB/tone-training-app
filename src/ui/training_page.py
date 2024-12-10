@@ -252,7 +252,7 @@ class TrainingPage(QWidget):
         elif self.training_type == "Production Training":
             # TODO: Implement actual comparison feedback
             self.feedback_label.setText("Feedback: Good attempt! Try to match the pitch more closely.")
-        QTimer.singleShot(1000, self.next_sound)
+        # QTimer.singleShot(1000, self.next_sound)
 
     def finish_training(self):
         score = (self.correct_answers / self.total_questions) * 100
