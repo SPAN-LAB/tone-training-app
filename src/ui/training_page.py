@@ -60,11 +60,6 @@ class TrainingPage(QWidget):
         self.prompt_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.prompt_label)
 
-        # Record button
-        # self.record_button = QPushButton("Start Recording")
-        # self.record_button.clicked.connect(self.toggle_recording)
-        # layout.addWidget(self.record_button)
-
         # Visualization label
         self.visualization_label = QLabel("Visual feedback will be displayed here.")
         self.visualization_label.setAlignment(Qt.AlignCenter)
@@ -102,9 +97,6 @@ class TrainingPage(QWidget):
             self.current_sound = self.sounds.pop(0)
 
             try:    
-                # if self.training_type == "Production Training":
-                #     self.record_button.setEnabled(False)  # Enable after playback
-
                 if self.response_buttons is not None:
                     for button in self.response_buttons:
                         button.setEnabled(False)
@@ -139,11 +131,8 @@ class TrainingPage(QWidget):
                     self.prompt_label.setText("Try to reproduce the sound")
                     print("In play_sound(), within if stmt for production training")
                     self.toggle_recording()
-                    # self.prompt_label.setText("Try to reproduce the sound and press 'Start Recording'")
-                    # self.record_button.setEnabled(True)
                 else:
                     self.prompt_label.setText("Select the sound you heard")
-                    # self.play_button.setEnabled(False)
                     if self.response_buttons is not None:
                         for button in self.response_buttons:
                             button.setEnabled(True)
@@ -166,7 +155,6 @@ class TrainingPage(QWidget):
 
     def start_recording(self):
         self.is_recording = True
-        # self.record_button.setText("Stop Recording")
         self.prompt_label.setText("Recording... Try to match the original sound")
 
         # Create session_recordings folder if it doesn't exist
@@ -205,7 +193,6 @@ class TrainingPage(QWidget):
 
     def stop_recording(self):
         self.is_recording = False
-        # self.record_button.setText("Start Recording")
         sd.stop()
 
         end_time = time.time()
