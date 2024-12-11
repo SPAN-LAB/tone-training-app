@@ -24,7 +24,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install pyinstaller PyQt5 sounddevice soundfile numpy cffi pycparser
+          pip install pyinstaller PyQt5 sounddevice soundfile numpy cffi pycparser pandas
 
       - name: Generate Version Info
         run: |
