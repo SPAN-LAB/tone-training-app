@@ -8,6 +8,9 @@ import datetime
 import time
 from .volume_check_page import VolumeCheckPage
 import csv
+import pandas as pd
+
+# TODO: Modify instructions in production training ui
 class TrainingPage(QWidget):
     # Signal emitted to end training and display results
     end_training_signal = pyqtSignal(str, str, float)
@@ -158,20 +161,20 @@ class TrainingPage(QWidget):
         self.prompt_label.setText("Recording... Try to match the original sound")
 
         # Create session_recordings folder if it doesn't exist
-        participant_folder = os.path.join("participant_recordings", self.participant_id)
+        participant_folder = os.path.join("participants", self.participant_id, "recording")
         os.makedirs(participant_folder, exist_ok=True)
 
         date = datetime.date.today()
         file = self.current_sound.split("/")[-1]
         file = file.split(".")[0]
-        self.recorded_audio_path = f"participant_recordings/{self.participant_id}/{date}_{file}.wav"
+        self.recorded_audio_path = os.path.join(participant_folder, f"{date}_{file}.wav")
 
         # Set default device
         sd.default.device = (self.input_device_id, self.audio_device_id)  
 
         # Start recording and countdown timer
         self.recording = sd.rec(int(3 * 44100), samplerate=44100, channels=1)
-        self.start_countdown(5)
+        self.start_countdown(3)
 
     def start_countdown(self, seconds):
         self.remaining_time = seconds
@@ -188,7 +191,7 @@ class TrainingPage(QWidget):
         if self.remaining_time > 0:
             self.prompt_label.setText(f"Recording... {self.remaining_time} seconds remaining")
         else:
-            self.countdown_timer.stop()  # Stop the timer
+            self.countdown_timer.stop()  
             self.stop_recording() 
 
     def stop_recording(self):
@@ -257,8 +260,7 @@ class TrainingPage(QWidget):
             QTimer.singleShot(1000, self.play_sound)
 
     def finish_training(self):
-        score = (self.correct_answers / self.total_questions) * 100
-        self.end_training_signal.emit(self.participant_id, self.training_type, score)
+        self.end_training_signal.emit(self.participant_id, self.training_type, self.score)
 
     def write_response(self, participant_id, training, audio_file, reaction_time, response=0, solution=0, accuracy=0):
 
@@ -292,3 +294,60 @@ class TrainingPage(QWidget):
                     csv_writer.writerow(["audio_file", "accuracy", "reaction_time"])
                 
                 csv_writer.writerow([audio_file, accuracy, round(reaction_time, 4)])
+
+        # Define the session tracking folder path
+        session_folder = os.path.join("participants", participant_id, "session_tracking")
+        os.makedirs(session_folder, exist_ok=True)
+
+        # Create three files for the respective training names
+        training_file = os.path.join(session_folder, f"{training}.csv")
+
+        # Check if the file already exists
+        file_exists = os.path.isfile(training_file)
+
+        if len(self.sounds) == 0:
+
+            self.score = (self.correct_answers / self.total_questions) * 100
+
+            # Open the training file in append mode and write session data
+            with open(training_file, mode="a", newline="") as session_file:
+                session_writer = csv.writer(session_file)
+
+                # Write header if file does not exist
+                if not file_exists:
+                    session_writer.writerow(["date", "subject", "accuracy"])
+
+                # TODO: Read response file to compute tone accuracy
+                df = pd.read_csv(f"{response_file}")
+                total_tone = {"1":0, "2":0, "3":0, "4":0}
+                correct_tone = {"1":0, "2":0, "3":0, "4":0}
+
+                for _, item in df.iterrows():
+
+                    # get number of audio files based on tone
+                    tone = re.search(r'\d+', item["audio_file"]).group()   
+                    total_tone[tone] += 1
+
+                    # get number of correct answer for perception and accuracy for production
+                    if training != "Production Training":
+                        if item["response"] == item["solution"]:
+                            correct_tone[tone] += 1
+                    else:
+                        correct_tone[tone] += item["accuracy"]
+
+                # calculate average accuracy for each tone
+                result = {}
+                for t in correct_tone:
+                    if total_tone[t] == 0:
+                        result[t] = None 
+                    else:
+                        result[t] = correct_tone[t] / total_tone[t]
+
+                # Write the date and accuracy information for every tone in the session
+                for key, value in result.items():
+                    session_writer.writerow([datetime.date.today(), key, value])  
+
+                # Write the date and overall accuracy information
+                # TODO: Calculate overall self.score for production training and remove this if statement
+                if training != "Production Training":
+                    session_writer.writerow([datetime.date.today(), "overall", self.score])          
