@@ -13,6 +13,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      - name: List Repository Files
+        run: |
+          ls -R
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -20,12 +24,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install pyinstaller PyQt5 sounddevice soundfile numpy cffi pycparser
-
-      - name: Unzip Resources
-        run: |
-          unzip app.zip -d .
-          ls -R  # List files to verify resources are extracted
+          pip install pyinstaller PyQt5 sounddevice soundfile numpy cffi pycparser pandas
 
       - name: Generate Version Info
         run: |

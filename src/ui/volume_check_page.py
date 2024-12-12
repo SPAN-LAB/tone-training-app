@@ -35,7 +35,7 @@ class VolumeCheckPage(QWidget):
         layout.addWidget(self.volume_bar)
 
         # Next button, initially disabled
-        self.next_button = QPushButton("Next")
+        self.next_button = QPushButton("Start Training")
         self.next_button.setEnabled(False)
         self.next_button.clicked.connect(self.complete_volume_check)
         layout.addWidget(self.next_button)
