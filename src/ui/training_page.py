@@ -8,7 +8,8 @@ import datetime
 import time
 from .volume_check_page import VolumeCheckPage
 import csv
-import pandas as pd
+import random
+#import pandas as pd
 
 # TODO: Modify instructions in production training ui
 class TrainingPage(QWidget):
@@ -30,6 +31,8 @@ class TrainingPage(QWidget):
         self.response_buttons = None
         self.start_time = None
         self.production_accuracy = 0
+        self.consecutiveTimesSolution = 0
+        self.previousAnswer = 0
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -93,10 +96,18 @@ class TrainingPage(QWidget):
 
     def play_sound(self):
         print("In play sound()")
-        print("Remaining sound file: ", [f for f in self.sounds])
+        #print("Remaining sound file: ", [f for f in self.sounds])
         print("Current sound: ", self.current_sound)
 
         if self.sounds:
+            if self.consecutiveTimesSolution >= 3:
+                print("shuffled sound list because of consecutive solutions")
+                random.shuffle(self.sounds)
+                random.shuffle(self.sounds)
+                random.shuffle(self.sounds)
+            print("Consecuvtiove Solutions: ", self.consecutiveTimesSolution)
+            random.shuffle(self.sounds)
+            print("shuffled list once")
             self.current_sound = self.sounds.pop(0)
 
             try:    
@@ -126,6 +137,8 @@ class TrainingPage(QWidget):
                 sd.default.device = self.audio_device_id
                 sd.play(data, fs, blocking=True)  
 
+                
+                
                 # Get reaction starting time
                 self.start_time = time.time()
 
@@ -223,7 +236,6 @@ class TrainingPage(QWidget):
 
 
     def process_response(self, response):
-
         end_time = time.time()
         reaction_time = end_time - self.start_time if self.start_time else 0
 
@@ -231,7 +243,11 @@ class TrainingPage(QWidget):
         is_correct = response == correct_answer
         if is_correct:
             self.correct_answers += 1
-
+            if(correct_answer == self.previousAnswer):
+                self.consecutiveTimesSolution
+            else:
+                self.consecutiveTimesSolution = 0
+        self.previousAnswer = correct_answer
         # display feedback on screen 
         self.provide_feedback(is_correct, correct_answer)
 
