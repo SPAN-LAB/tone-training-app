@@ -47,6 +47,7 @@ class FeedbackPage(QWidget):
         self.participant_id_label.setText(f"Participant ID: {participant_id}")
         self.training_type_label.setText(f"Training Type: {training_type}")
         self.score_label.setText(f"Score: {score} %")
+        
 
     def on_return_button_clicked(self):
         self.return_to_start_signal.emit()
