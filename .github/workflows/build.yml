@@ -32,11 +32,7 @@ jobs:
 
       - name: Build Executable
         run: |
-          pyinstaller --onefile --windowed --hidden-import sounddevice --hidden-import soundfile --add-data "src/ui:src/ui" --add-data "src/training:src/training" src/main.py
-
-      - name: Debug Dist Directory
-        run: |
-          ls -l dist
+          pyinstaller --onefile --windowed --hidden-import sounddevice --hidden-import soundfile --add-data "src/ui;src/ui" --add-data "src/training;src/training" src/main.py
 
       - name: Upload Executable to Artifacts
         uses: actions/upload-artifact@v4
