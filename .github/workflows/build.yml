@@ -30,10 +30,6 @@ jobs:
       #   run: |
       #     python generate_version_info.py
 
-      - name: Debug Included Files In Executable
-        run: |
-          unzip -l dist/main.exe
-
       - name: Build Executable
         run: |
           pyinstaller --onefile --windowed --hidden-import sounddevice --hidden-import soundfile --add-data "src/ui;src/ui" --add-data "src/training;src/training" src/main.py
@@ -43,3 +39,7 @@ jobs:
         with:
           name: Plasticity-Training
           path: dist/main.exe # don't change this name
+
+      - name: Debug Included Files In Executable
+        run: |
+          unzip -l dist/main.exe
