@@ -9,6 +9,7 @@ import time
 from .volume_check_page import VolumeCheckPage
 import csv
 import pandas as pd
+import random
 
 # TODO: Modify instructions in production training ui
 class TrainingPage(QWidget):
@@ -81,19 +82,22 @@ class TrainingPage(QWidget):
         self.input_device_id = input_device_id  
         self.correct_answers = 0
         self.total_questions = len(sounds)
+
+        # random shuffle audio files
+        random.shuffle(self.sounds)
         
         if training_type == "Production Training":
             self.setup_production_training()
         else:
             self.setup_ui()
 
-        print("In setup_training() in training_page.py")
-        print("After assign current sound: ", self.current_sound, self.sounds)
+        # print("In setup_training() in training_page.py")
+        # print("After assign current sound: ", self.current_sound, self.sounds)
         QTimer.singleShot(1000, self.play_sound)  
 
     def play_sound(self):
-        print("In play sound()")
-        print("Remaining sound file: ", [f for f in self.sounds])
+        # print("In play sound()")
+        # print("Remaining sound file: ", [f for f in self.sounds])
         print("Current sound: ", self.current_sound)
 
         if self.sounds:
@@ -132,7 +136,7 @@ class TrainingPage(QWidget):
                 # Update UI after playback
                 if self.training_type == "Production Training":
                     self.prompt_label.setText("Try to reproduce the sound")
-                    print("In play_sound(), within if stmt for production training")
+                    # print("In play_sound(), within if stmt for production training")
                     self.toggle_recording()
                 else:
                     self.prompt_label.setText("Select the sound you heard")

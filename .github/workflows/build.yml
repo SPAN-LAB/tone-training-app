@@ -13,9 +13,9 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: List Repository Files
-        run: |
-          ls -R
+      # - name: List Repository Files
+      #   run: |
+      #     ls -R
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -36,7 +36,7 @@ jobs:
           pyinstaller --onefile --windowed --hidden-import sounddevice --hidden-import soundfile --add-data "src/ui:src/ui" --add-data "src/training:src/training" src/main.py
 
       - name: Upload Executable to Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Plasticity-Training
-          path: dist/main.exe
+          path: dist/main.exe # don't change this name
