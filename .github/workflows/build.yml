@@ -39,7 +39,3 @@ jobs:
         with:
           name: Plasticity-Training
           path: dist/main.exe # don't change this name
-
-      - name: Debug Included Files In Executable
-        run: |
-          unzip -l dist/main.exe
