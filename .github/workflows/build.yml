@@ -36,7 +36,7 @@ jobs:
 
       - name: Build Executable
         run: |
-          pyinstaller --onefile --windowed --hidden-import sounddevice --hidden-import soundfile --add-data "src/ui:ui" --add-data "src/training:training" src/main.py
+          pyinstaller --onefile --windowed --hidden-import sounddevice --hidden-import soundfile --hidden-import pandas --add-data "src/ui:ui" --add-data "src/training:training" src/main.py
 
       - name: Upload Executable to Artifacts
         uses: actions/upload-artifact@v4
