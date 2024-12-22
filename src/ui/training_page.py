@@ -31,6 +31,7 @@ class TrainingPage(QWidget):
         self.response_buttons = None
         self.start_time = None
         self.production_accuracy = 0
+        self.played_audio_cnt = 0
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -98,10 +99,22 @@ class TrainingPage(QWidget):
     def play_sound(self):
         # print("In play sound()")
         # print("Remaining sound file: ", [f for f in self.sounds])
+
+        # block training
+        if self.played_audio_cnt % 20 == 0 and self.played_audio_cnt > 0 and self.sounds:
+            if self.response_buttons is not None:
+                for button in self.response_buttons:
+                    button.setEnabled(False)
+            self.start_countdown(30, False)    # take 30 seconds break after playing 20 audio files
+            self.played_audio_cnt = 0   # reinitialize played audio file count as zero to prevent loop
+            return
+
         print("Current sound: ", self.current_sound)
+        print("Number of sounds left: ", len(self.sounds))
 
         if self.sounds:
             self.current_sound = self.sounds.pop(0)
+            self.played_audio_cnt += 1  # increment count of played audio file
 
             try:    
                 if self.response_buttons is not None:
@@ -178,25 +191,39 @@ class TrainingPage(QWidget):
 
         # Start recording and countdown timer
         self.recording = sd.rec(int(3 * 44100), samplerate=44100, channels=1)
-        self.start_countdown(3)
+        self.start_countdown(3, recording=True) 
 
-    def start_countdown(self, seconds):
+    def start_countdown(self, seconds, recording):
         self.remaining_time = seconds
-        self.prompt_label.setText(f"Recording... {self.remaining_time} seconds remaining")
+
+        if recording:
+            self.prompt_label.setText(f"Recording... {self.remaining_time} seconds remaining")            
+        else:
+            self.prompt_label.setText(f"Take a break! {self.remaining_time} seconds remaining")
 
         # Create a timer that triggers every 1 second
         self.countdown_timer = QTimer(self)
         self.countdown_timer.timeout.connect(self.update_countdown)
         self.countdown_timer.start(1000)
     
-    # TODO: make start_countdown() and update_countdown() more general  
     def update_countdown(self):
         self.remaining_time -= 1
         if self.remaining_time > 0:
-            self.prompt_label.setText(f"Recording... {self.remaining_time} seconds remaining")
+            # update countdown according to the label itself
+            if "Recording" in self.prompt_label.text():
+                self.prompt_label.setText(f"Recording... {self.remaining_time} seconds remaining")
+            else:
+                self.prompt_label.setText(f"Take a break! {self.remaining_time} seconds remaining")
         else:
             self.countdown_timer.stop()  
-            self.stop_recording() 
+            if "Recording" in self.prompt_label.text():
+                self.stop_recording() 
+            else:
+                self.prompt_label.setText("Select the sound you heard")
+                if self.response_buttons is not None:
+                    for button in self.response_buttons:
+                        button.setEnabled(True)
+                QTimer.singleShot(500, self.play_sound)
 
     def stop_recording(self):
         self.is_recording = False
