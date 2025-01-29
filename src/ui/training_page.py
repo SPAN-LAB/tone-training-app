@@ -135,9 +135,13 @@ class TrainingPage(QWidget):
                 # Check if the file actually exists
                 if not os.path.isfile(full_path):
                     raise FileNotFoundError(f"File not found: {full_path}")
-
+                
                 # Read the sound file to determine its sample rate and number of channels
                 data, fs = sf.read(full_path, dtype="float32")
+
+                # Adjust volume of sound file
+                volume_factor = 0.3
+                data *= volume_factor
 
                 # Set the audio device and play the sound with the correct number of channels
                 sd.default.device = self.audio_device_id
