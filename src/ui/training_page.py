@@ -146,6 +146,10 @@ class TrainingPage(QWidget):
                 # Read the sound file to determine its sample rate and number of channels
                 data, fs = sf.read(full_path, dtype="float32")
 
+                # Adjust volume of sound file
+                volume_factor = 0.3
+                data *= volume_factor
+
                 # Set the audio device and play the sound with the correct number of channels
                 sd.default.device = self.audio_device_id
                 sd.play(data, fs, blocking=True)
