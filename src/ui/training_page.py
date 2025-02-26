@@ -10,6 +10,10 @@ from .volume_check_page import VolumeCheckPage
 import csv
 import pandas as pd
 import random
+import seaborn as sns # TODO: Install seaborn when bundle executable
+
+# universal path
+main_path = os.path.join("Volumes", "gurindapalli", "projects", "Plasticity_training")
 
 # TODO: Modify instructions in production training ui
 class TrainingPage(QWidget):
@@ -340,6 +344,7 @@ class TrainingPage(QWidget):
         # Check if the file already exists
         file_exists = os.path.isfile(training_file)
 
+        # Write training session accuracy
         if len(self.sounds) == 0:
 
             self.score = (self.correct_answers / self.total_questions) * 100
@@ -385,4 +390,230 @@ class TrainingPage(QWidget):
                 # Write the date and overall accuracy information
                 # TODO: Calculate overall self.score for production training and remove this if statement
                 if training != "Production Training":
-                    session_writer.writerow([datetime.date.today(), "overall", self.score])          
+                    session_writer.writerow([datetime.date.today(), "overall", self.score])  
+
+
+
+    # def write_response(self, participant_id, training, audio_file, reaction_time, response=0, solution=0, accuracy=0):
+    #     """
+    #     Function to write response file for the session.
+    #     Create a folder with participant's ID. 
+    #     Within the folder, has three files corresponding to each training, and a session tracking folder.
+    #     Record date, response, solution and reaction time for perception training, 
+    #     while record date, tone accuracy and reaction time for production training. 
+    #     Within the session tracking folder, has three files corresponding to each training, recording accuracy.
+
+    #     Returns:
+    #         _type_: _description_
+    #     """
+
+    #     # Create participants folder
+    #     participant_folder = os.path.join("participants", participant_id)
+    #     os.makedirs(participant_folder, exist_ok=True)
+        
+    #     # Create response file 
+    #     training_file = re.sub(r"\s", "_", string.lower(training))
+    #     response_file = os.path.join(participant_folder, f"{training_file}.csv")
+    #     file_exists = os.path.isfile(response_file)
+
+    #     # Append response data
+    #     with open(response_file, "a+") as csv_file:
+    #         csv_writer = csv.writer(csv_file)
+
+    #         if training != "Production Training":
+            
+    #             header = ["date", "audio_file", "response", "solution", "reaction_time"]
+    #             data = [datetime.date.today(), audio_file, response, solution, round(reaction_time, 4)]
+
+    #             csv_writer.writerow(header) if not file_exists else None   # write header row for new file
+    #             csv_writer.writerow(data)
+
+    #         else:
+
+    #             header = ["date", "audio_file", "accuracy", "reaction_time"]
+    #             data = [datetime.date.today(), audio_file, accuracy, round(reaction_time, 4)]
+
+    #             csv_writer.writerow(header) if not file_exists else None   # write header row for new file
+    #             csv_writer.writerow(data)
+
+    #     # Create session tracking folder
+    #     session_folder = os.path.join(participant_folder, "session_tracking")
+    #     os.makedirs(session_folder, exist_ok=True)
+
+    #     # Create session file
+    #     session_file = os.path.join(session_folder, f"{training_file}.csv")
+    #     file_exists = os.path.isfile(training_file)
+
+    #     # Write training session accuracy
+    #     if len(self.sounds) == 0:
+
+    #         self.score = (self.correct_answers / self.total_questions) * 100
+
+    #         # Open the training file in append mode and write session data
+    #         with open(session_file, mode="a", newline="") as csv_file:
+    #             session_writer = csv.writer(csv_file)
+
+    #             # Write header row for new file
+    #             header = ["date", "subject", "accuracy"]
+    #             session_writer.writerow(header) if not file_exists else None 
+
+    #             # Compute tone accuracy
+    #             df = pd.read_csv(f"{response_file}")
+    #             total_tone = {"1":0, "2":0, "3":0, "4":0}
+    #             correct_tone = {"1":0, "2":0, "3":0, "4":0}
+
+    #             for _, col in df.iterrows():
+
+    #                 # get number of audio files based on tone
+    #                 tone = re.search(r'\d+', col["audio_file"]).group()   
+    #                 total_tone[tone] += 1
+
+    #                 # get number of correct answer for perception and accuracy for production
+    #                 if training != "Production Training":
+    #                     if col["response"] == col["solution"]:
+    #                         correct_tone[tone] += 1
+    #                 else:
+    #                     correct_tone[tone] += col["accuracy"]
+
+    #             # calculate average accuracy for each tone
+    #             result = {}
+    #             for t in correct_tone:
+    #                 if total_tone[t] == 0:
+    #                     result[t] = None 
+    #                 else:
+    #                     result[t] = correct_tone[t] / total_tone[t]
+
+    #             # Write tone accuracy for the current session
+    #             for key, value in result.items():
+    #                 session_writer.writerow([datetime.date.today(), key, value])  
+
+    #             if training != "Production Training":
+    #                 session_writer.writerow([datetime.date.today(), "overall", self.score])          
+
+    def read_csv(self, directory, plot_type):
+        """
+        Helper function to read csv files for plotting accuracy plot.
+
+        Returns:
+            DataFrame: Pandas dataframe that contains trainees' record
+        """
+        if plot_type != "session tracking":
+            csv_files = [file for file in os.listdir(directory) if file.endswith('.csv') and file.startswith(self.training_type)]
+
+        else:
+            csv_files = [file for file in os.listdir(directory) if file.endswith('.csv')]
+        
+        df_list = []
+        for file in csv_files:
+            data = pd.read_csv(os.path.join(directory, file))
+            data["date"] = file.split("_")[0] if plot_type != "session_tracking" else None # TODO: Remove this if there's already date column
+            df_list.append(data)
+        return pd.concat(df_list, ignore_index=True)
+    
+    def split_block(self, df, files_per_block):
+
+        # Determine response accuracy for perception training
+        df["accuracy"] = df["response"] == df["solution"] if self.training_type != "Production Training" else None
+
+        # Assign block numbers
+        df["block"] = (df.index // files_per_block).astype(int) + 1
+
+        # Calculate mean accuracy for every block
+        group_accuracy = df.groupby('block')['accuracy'].mean() * 100
+        df = df.merge(group_accuracy, on=['block'], suffixes=('', '_mean'))
+        df.rename(columns={"accuracy_mean": "accuracy"}, inplace=True) 
+
+        return df
+
+    def plot_block_accuracy(self):
+        """ 
+        Plot tone accuracy over blocks in the current session.
+        10 audio files per block.
+
+        Returns:
+            matplotlib Axes: Line plot show the tone accuracy over blocks.
+        """
+
+        global main_path
+
+        # read csv files
+        dir = os.path.join(main_path, 
+                            "tone-training-app", 
+                            "participants", 
+                            self.participant_id, 
+                            self.training_type
+                            )
+        df = self.read_csv(dir, "block_tracking")
+
+        # extract the records of current session
+        num = 60        # TODO: Change to len(audio_files_folder) or to correct number
+        df = df[-num:]
+
+        # split the session into blocks
+        df = self.split_block(df, 10)
+
+        # plot
+        line = sns.lineplot(df, x="block", y="accuracy", marker="o")
+        xlimit = df["block"].unique()[-1]
+        line.set(xticks=[(i + 1) * 2 for i in range(xlimit // 2)], yticks=[0, 20, 40, 60, 80, 100],
+                xlim=(0, xlimit+1), ylim=(0, 105))
+        line.set_xlabel("Block")
+        line.set_ylabel("Accuracy(%)")
+        line.set_title("Participant: " + self.participant_id)
+
+        return line
+    
+    def plot_session_accuracy(self):
+        """ 
+        Plot tone accuracy over sessions.
+
+        Returns:
+            matplotlib Axes: Line plot show the tone accuracy over blocks.
+        """
+
+        global main_path
+
+        # read csv files
+        dir = os.path.join(main_path, 
+                            "tone-training-app", 
+                            "participants", 
+                            self.participant_id, 
+                            "session_tracking"
+                            )
+        df = self.read_csv(dir, "session_tracking")
+
+        # TODO: calculate all accuracy in app with the same scale
+        # adjust accuracy scale to be percentage
+        df.loc[df["subject"] != "overall", "accuracy"] *= 100
+
+        # divide dataframe into different sessions for each five rows
+        df["session"] = (df.index // 5).astype(int) + 1
+
+        # plot
+        line = sns.lineplot(df, x = "session", y = "accuracy", hue = "subject", marker="o", palette=sns.color_palette("Set1", 5))
+
+        # adjust line attribute to make overall accuracy stand out
+        for line_obj, label in zip(line.lines, line.get_legend().texts):
+                if label.get_text() != "overall":  
+                        line_obj.set_alpha(0.5)
+                else:
+                        line_obj.set_linewidth(3)
+
+        # set axis ticks
+        xlimit = df["session"].unique()[-1]
+        line.set(xticks=[i for i in range(xlimit + 1)], yticks=[0, 20, 40, 60, 80, 100],
+                xlim=(0.5, xlimit+1), ylim=(0, 105))
+
+        # set axis labels and title
+        line.set_xlabel("Session")
+        line.set_ylabel("Accuracy(%)")
+        line.set_title("Participant: " + self.participant_id)
+
+        # set legend labels
+        handles, _ = line.get_legend_handles_labels()
+        new_labels = ["Tone 1", "Tone 2", "Tone 3", "Tone 4", "Overall"]  
+        line.legend(handles=handles, labels=new_labels, title="Subject", loc="upper left", bbox_to_anchor=(1, 1))
+
+        return line
+
+    
