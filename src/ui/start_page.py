@@ -1,7 +1,11 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox, QPushButton, QFileDialog, QSpacerItem, QSizePolicy, QMessageBox
 from PyQt5.QtCore import pyqtSignal, Qt
 import os
+import soundfile as sf
 import sounddevice as sd 
+import pyvolume
+import pygame
+import tkinter as tk
 
 class StartPage(QWidget):
     # Signal emitted to start training, sending participant_id, training_type, sounds, output device id, and input device id
@@ -13,13 +17,15 @@ class StartPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setup_ui()
+        #self.setup_volume_ui()
         # Directory where sounds are located by default
         self.sounds_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'resources', 'sounds')
         self.sounds = []  # Initialize sounds list
+        
 
     def setup_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(30, 30, 30, 30)  # Add some margin around the edges
+        #main_layout.setContentsMargins(30, 30, 30, 30)  # Add some margin around the edges
 
         # Top section (Participant ID and Training Type)
         top_layout = QVBoxLayout()
@@ -48,8 +54,12 @@ class StartPage(QWidget):
         self.audio_device_label = QLabel("Select Audio Output Device:")
         self.audio_device_combo = QComboBox()
         self.populate_audio_devices()
+        #Audio test button
+        self.audio_test_button = QPushButton("Test Sound")
+        self.audio_test_button.clicked.connect(lambda: self.playSound())
         device_layout.addWidget(self.audio_device_label)
         device_layout.addWidget(self.audio_device_combo)
+        device_layout.addWidget(self.audio_test_button)
         main_layout.addLayout(device_layout)
         main_layout.addLayout(top_layout)
 
@@ -58,16 +68,19 @@ class StartPage(QWidget):
         self.audio_input_device_label = QLabel("Select Audio Input Device:")
         self.audio_input_device_combo = QComboBox()
         self.populate_input_devices()
+        
         input_device_layout.addWidget(self.audio_input_device_label)
         input_device_layout.addWidget(self.audio_input_device_combo)
         main_layout.addLayout(input_device_layout)
         self.audio_input_device_label.hide()
         self.audio_input_device_combo.hide()
+        
 
         main_layout.addLayout(top_layout)
-
+        
         # Spacer to push buttons to the bottom
         main_layout.addItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
+        
 
         # Button section at the bottom
         button_layout = QVBoxLayout()
@@ -84,7 +97,16 @@ class StartPage(QWidget):
         button_layout.addWidget(self.start_button)
 
         main_layout.addLayout(button_layout)
-
+        
+    #Test sound function | Grabs the selected output device and plays "test_sound.p3"    
+    def playSound(self):
+        selected_output_index = self.audio_device_combo.currentIndex()
+        sd.default.device = self.output_devices[selected_output_index][1] if selected_output_index >= 0 else -1
+        # Read the sound file to determine its sample rate and number of channels
+        data, fs = sf.read("test_sound.mp3", dtype="float32")
+        # Set the audio device and play the sound with the correct number of channels
+        sd.play(data, fs, blocking=True)
+        
     def toggle_input_device_selection(self):
         """Toggle input device visibility based on training type selection."""
         if self.training_type_combo.currentText() == "Production Training":

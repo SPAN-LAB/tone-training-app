@@ -1,5 +1,6 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QFont
 import sounddevice as sd
 import soundfile as sf
 import os
@@ -9,9 +10,8 @@ import time
 from .volume_check_page import VolumeCheckPage
 import csv
 import random
-#import pandas as pd
 
-# TODO: Modify instructions in production training ui
+
 class TrainingPage(QWidget):
     # Signal emitted to end training and display results
     end_training_signal = pyqtSignal(str, str, float)
@@ -40,21 +40,33 @@ class TrainingPage(QWidget):
         # Prompt label
         self.prompt_label = QLabel("Listen to the sound")
         self.prompt_label.setAlignment(Qt.AlignCenter)
+        font = QFont()
+        font.setPointSize(50)
+        self.prompt_label.setFont(font)
         layout.addWidget(self.prompt_label)
 
         # Response buttons
-        response_layout = QHBoxLayout()
+        response_layout_1 = QHBoxLayout()
+        response_layout_2 = QHBoxLayout()
         self.response_buttons = []
+        # Creating response buttons
         for i in range(1, 5):
             button = QPushButton(str(i))
+            button.setMinimumSize(250, 250)
+            button.setFont(font)
             button.clicked.connect(lambda _, x=i: self.process_response(x))
-            response_layout.addWidget(button)
+            if i < 3:
+                response_layout_1.addWidget(button)
+            else:
+                response_layout_2.addWidget(button)
             self.response_buttons.append(button)
-        layout.addLayout(response_layout)
+        layout.addLayout(response_layout_1)
+        layout.addLayout(response_layout_2)
 
         # Feedback label
         self.feedback_label = QLabel("")
         self.feedback_label.setAlignment(Qt.AlignCenter)
+        self.feedback_label.setFont(font)
         layout.addWidget(self.feedback_label)
 
     def setup_production_training(self):
@@ -92,13 +104,14 @@ class TrainingPage(QWidget):
 
         print("In setup_training() in training_page.py")
         print("After assign current sound: ", self.current_sound, self.sounds)
-        QTimer.singleShot(1000, self.play_sound)  
+        QTimer.singleShot(1000, self.play_sound)
 
     def play_sound(self):
         print("In play sound()")
         #print("Remaining sound file: ", [f for f in self.sounds])
         print("Current sound: ", self.current_sound)
-
+        
+        #If the sound has been played 3 times in a row or more, it shuffles the sound list
         if self.sounds:
             if self.consecutiveTimesSolution >= 3:
                 print("shuffled sound list because of consecutive solutions")
@@ -114,7 +127,7 @@ class TrainingPage(QWidget):
                 if self.response_buttons is not None:
                     for button in self.response_buttons:
                         button.setEnabled(False)
-                    self.feedback_label.clear()
+                self.feedback_label.clear()
 
                 # Construct the full path within resources/sounds and ensure .mp3 extension
                 full_path = os.path.join(
@@ -129,16 +142,16 @@ class TrainingPage(QWidget):
                 # Check if the file actually exists
                 if not os.path.isfile(full_path):
                     raise FileNotFoundError(f"File not found: {full_path}")
-
+                
                 # Read the sound file to determine its sample rate and number of channels
                 data, fs = sf.read(full_path, dtype="float32")
 
                 # Set the audio device and play the sound with the correct number of channels
                 sd.default.device = self.audio_device_id
-                sd.play(data, fs, blocking=True)  
-
-                
-                
+                sd.play(data, fs, blocking=True)
+                if self.response_buttons is not None:
+                    for button in self.response_buttons:
+                        button.setEnabled(False)
                 # Get reaction starting time
                 self.start_time = time.time()
 
@@ -149,6 +162,7 @@ class TrainingPage(QWidget):
                     self.toggle_recording()
                 else:
                     self.prompt_label.setText("Select the sound you heard")
+                    time.sleep(2)
                     if self.response_buttons is not None:
                         for button in self.response_buttons:
                             button.setEnabled(True)
@@ -234,7 +248,6 @@ class TrainingPage(QWidget):
         # TODO: Display actual pitch track visualization and compute similarity
         self.provide_feedback()
 
-
     def process_response(self, response):
         end_time = time.time()
         reaction_time = end_time - self.start_time if self.start_time else 0
@@ -255,8 +268,12 @@ class TrainingPage(QWidget):
         self.write_response(self.participant_id, self.training_type, self.current_sound.split("/")[-1], 
                             reaction_time, response=response, solution=correct_answer)
 
+        if self.response_buttons is not None:
+            for button in self.response_buttons:
+                button.setEnabled(False)
         # Move to next sound after 1 second
-        QTimer.singleShot(1000, self.play_sound)  
+        QTimer.singleShot(1000, self.play_sound)
+        
 
     def provide_feedback(self, is_correct=None, correct_answer=None):
 
