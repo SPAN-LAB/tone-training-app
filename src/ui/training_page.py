@@ -114,9 +114,6 @@ class TrainingPage(QWidget):
             self.played_audio_cnt = 0   # reinitialize played audio file count as zero to prevent loop
             return
 
-        print("Current sound: ", self.current_sound)
-        print("Number of sounds left: ", len(self.sounds))
-
         if self.sounds:
             self.current_sound = self.sounds.pop(0)
             self.played_audio_cnt += 1  # increment count of played audio file
@@ -314,6 +311,7 @@ class TrainingPage(QWidget):
         os.makedirs(training_folder, exist_ok=True)
         
         # Obtain previous session number
+        print("played audio count: ", self.played_audio_cnt)
         if folder_exist and self.played_audio_cnt == 1:
             self.session_nums = [int(re.findall(r"\d+", file)[0]) for file in os.listdir(training_folder) if file.endswith(".csv")]
             self.session_num = max(self.session_nums)
@@ -322,7 +320,7 @@ class TrainingPage(QWidget):
         print("Session number: ", self.session_num)
 
         # Define the response file path
-        response_file = os.path.join(training_folder, f"session_{self.session_num}.csv")
+        response_file = os.path.join(training_folder, f"session{self.session_num}.csv")
         
         # Check if the file already exists
         file_exists = os.path.isfile(response_file)
@@ -363,7 +361,7 @@ class TrainingPage(QWidget):
 
                 # Write header if file does not exist
                 if not file_exists:
-                    session_writer.writerow(["date", "subject", "accuracy"])
+                    session_writer.writerow(["session", "date", "subject", "accuracy"])
 
                 # Read response file to compute tone accuracy
                 df = pd.read_csv(f"{response_file}")
@@ -393,12 +391,12 @@ class TrainingPage(QWidget):
 
                 # Write the date and accuracy information for every tone in the session
                 for key, value in result.items():
-                    session_writer.writerow([datetime.date.today(), key, value])  
+                    session_writer.writerow([self.session_num,datetime.date.today(), key, value])  
 
                 # Write the date and overall accuracy information
                 # TODO: Calculate the overall accuracy for production
                 self.score = (self.correct_answers / self.total_questions) * 100 if training != "Production Training" else 0
-                session_writer.writerow([datetime.date.today(), "overall", self.score])  
+                session_writer.writerow([self.session_num, datetime.date.today(), "overall", self.score])  
 
 
     def read_csv(self, directory, plot_type):
