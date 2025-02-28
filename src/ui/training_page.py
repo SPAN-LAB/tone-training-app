@@ -36,6 +36,7 @@ class TrainingPage(QWidget):
         self.start_time = None
         self.production_accuracy = 0
         self.played_audio_cnt = 0
+        self.session_num = 1
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -313,15 +314,15 @@ class TrainingPage(QWidget):
         os.makedirs(training_folder, exist_ok=True)
         
         # Obtain previous session number
-        session_num = 1
-        if folder_exist:
-            session_nums = [int(re.findall(r"\d+", file)[0]) for file in os.listdir(training_folder) if file.endswith(".csv")]
-            session_num = max(session_nums)
+        if folder_exist and self.played_audio_cnt == 1:
+            self.session_nums = [int(re.findall(r"\d+", file)[0]) for file in os.listdir(training_folder) if file.endswith(".csv")]
+            self.session_num = max(self.session_nums)
+            self.session_num += 1
 
-        print("Session number: ", session_num)
+        print("Session number: ", self.session_num)
 
         # Define the response file path
-        response_file = os.path.join(training_folder, f"session_{session_num}.csv")
+        response_file = os.path.join(training_folder, f"session_{self.session_num}.csv")
         
         # Check if the file already exists
         file_exists = os.path.isfile(response_file)
