@@ -1,5 +1,6 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QKeyEvent
 import sounddevice as sd
 import soundfile as sf
 import os
@@ -38,6 +39,9 @@ class TrainingPage(QWidget):
         self.played_audio_cnt = 0
         self.session_num = 1
 
+        # Set focus policy to accept keyboard focus
+        self.setFocusPolicy(Qt.StrongFocus)
+
     def setup_ui(self):
         layout = QVBoxLayout(self)
 
@@ -60,6 +64,13 @@ class TrainingPage(QWidget):
         self.feedback_label = QLabel("")
         self.feedback_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.feedback_label)
+
+    def keyPressEvent(self, event: QKeyEvent):
+        key = event.key()
+        if key in [Qt.Key_1, Qt.Key_2, Qt.Key_3, Qt.Key_4]:
+            index = key - Qt.Key_1
+            if 0 <= index < len(self.response_buttons):
+                self.response_buttons[index].click()
 
     def setup_production_training(self):
         """Setup UI for Production Training"""
