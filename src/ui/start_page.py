@@ -3,9 +3,9 @@ from PyQt5.QtCore import pyqtSignal, Qt
 import os
 import soundfile as sf
 import sounddevice as sd 
-import pyvolume
-import pygame
-import tkinter as tk
+# import pyvolume
+# import pygame
+# import tkinter as tk
 
 class StartPage(QWidget):
     # Signal emitted to start training, sending participant_id, training_type, sounds, output device id, and input device id

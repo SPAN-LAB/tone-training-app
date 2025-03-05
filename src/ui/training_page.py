@@ -10,7 +10,7 @@ import time
 from .volume_check_page import VolumeCheckPage
 import csv
 import random
-
+import pandas as pd
 
 class TrainingPage(QWidget):
     # Signal emitted to end training and display results
