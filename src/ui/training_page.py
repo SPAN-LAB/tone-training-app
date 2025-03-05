@@ -70,7 +70,9 @@ class TrainingPage(QWidget):
         if key in [Qt.Key_1, Qt.Key_2, Qt.Key_3, Qt.Key_4]:
             index = key - Qt.Key_1
             if 0 <= index < len(self.response_buttons):
-                self.response_buttons[index].click()
+                bt = self.response_buttons[index]
+                bt.setStyleSheet("border: 2px solid green") # highlight selected button
+                bt.click()
 
     def setup_production_training(self):
         """Setup UI for Production Training"""
@@ -317,6 +319,7 @@ class TrainingPage(QWidget):
         self.feedback_label.clear()
         if self.response_buttons is not None:
             for button in self.response_buttons:
+                button.setStyleSheet("")  # remove highlight
                 button.setEnabled(True)
         QTimer.singleShot(1000, self.play_sound) 
 
