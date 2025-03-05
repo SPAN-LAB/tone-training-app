@@ -99,7 +99,7 @@ class TrainingPage(QWidget):
 
         # print("In setup_training() in training_page.py")
         # print("After assign current sound: ", self.current_sound, self.sounds)
-        QTimer.singleShot(1000, self.play_sound)  
+        QTimer.singleShot(250, self.play_sound)  
 
     def play_sound(self):
         # print("In play sound()")
@@ -229,7 +229,6 @@ class TrainingPage(QWidget):
                 if self.response_buttons is not None:
                     for button in self.response_buttons:
                         button.setEnabled(True)
-                QTimer.singleShot(500, self.play_sound)
 
     def stop_recording(self):
         self.is_recording = False
@@ -261,6 +260,12 @@ class TrainingPage(QWidget):
 
     def process_response(self, response):
 
+        # Disable response buttons after selection
+        if self.response_buttons is not None:
+            for button in self.response_buttons:
+                button.setEnabled(False)
+
+        # Stop timer and calculate participants' response time
         end_time = time.time()
         reaction_time = end_time - self.start_time if self.start_time else 0
 
@@ -275,9 +280,6 @@ class TrainingPage(QWidget):
         # write to response file
         self.write_response(self.participant_id, self.training_type, self.current_sound.split("/")[-1], 
                             reaction_time, response=response, solution=correct_answer)
-
-        # Move to next sound after 1 second
-        QTimer.singleShot(1000, self.play_sound)  
 
     def provide_feedback(self, is_correct=None, correct_answer=None):
 
@@ -294,7 +296,16 @@ class TrainingPage(QWidget):
         elif self.training_type == "Production Training":
             # TODO: Implement actual comparison feedback
             self.feedback_label.setText("Feedback: Good attempt! Try to match the pitch more closely.")
-            QTimer.singleShot(1000, self.play_sound)
+
+        # Hide feedback and enable buttons before moving to the next audio file
+        QTimer.singleShot(500, self.clear_feedback_enable_buttons)
+
+    def clear_feedback_enable_buttons(self):
+        self.feedback_label.clear()
+        if self.response_buttons is not None:
+            for button in self.response_buttons:
+                button.setEnabled(True)
+        QTimer.singleShot(250, self.play_sound) 
 
     def finish_training(self):
         self.end_training_signal.emit(self.participant_id, self.training_type, self.score)
