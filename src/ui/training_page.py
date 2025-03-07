@@ -422,11 +422,11 @@ class TrainingPage(QWidget):
 
                 # Write the date and overall accuracy information
                 # TODO: Calculate the overall accuracy for production
-                self.score = (self.correct_answers / self.total_questions) * 100 if training != "Production Training" else 0
+                self.score = (self.correct_answers / self.total_questions) if training != "Production Training" else 0
                 session_writer.writerow([self.session_num, datetime.date.today(), "overall", self.score])  
 
 
-    def read_csv(self, directory, plot_type):
+    def read_response(self, directory, plot_type):
         """
         Helper function to read csv files for plotting accuracy plot.
 
@@ -516,7 +516,7 @@ class TrainingPage(QWidget):
                             self.participant_id, 
                             "session_tracking"
                             )
-        df = self.read_csv(dir, "session_tracking")
+        df = self.read_response(dir, "session_tracking")
 
         # TODO: calculate all accuracy in app with the same scale
         # adjust accuracy scale to be percentage
