@@ -438,8 +438,6 @@ class TrainingPage(QWidget):
         group_accuracy = df.groupby('block')['accuracy'].mean() * 100
         df = df.merge(group_accuracy, on=['block'], suffixes=('', '_mean'))
 
-        print("df columns: ", df.columns)
-
         return df
 
     def plot_block_accuracy(self):
@@ -455,13 +453,10 @@ class TrainingPage(QWidget):
 
         # read csv files
         file = os.path.join(main_path, "tone-training-app", "participants", self.participant_id, self.training_type, f"session{self.session_num}.csv")
-        # file = os.path.join("tone-training-app", "participants", self.participant_id, self.training_type, f"session{self.session_num}.csv")
         df = pd.read_csv(file)
 
         # split the session into blocks
         df = self.split_block(df, 10)
-        print("Block accuracy Dataframe")
-        print(df)
 
         # plot
         fig, ax = plt.subplots()
@@ -489,17 +484,10 @@ class TrainingPage(QWidget):
 
         # read csv file
         file = os.path.join(main_path, "tone-training-app", "participants", self.participant_id, "session_tracking", f"{self.training_type}.csv")
-        # file = os.path.join("tone-training-app", "participants", self.participant_id, "session_tracking", f"{self.training_type}.csv")
         df = pd.read_csv(file).fillna(0)
-
-        print("Session accuracy dataframe")
-        print(df)
 
         # scale accuracy score into percentage
         df["accuracy"] *= 100
-
-        print("Session accuracy dataframe after processing")
-        print(df) 
 
         # plot
         fig, ax = plt.subplots()
