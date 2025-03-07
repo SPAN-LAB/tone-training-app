@@ -11,15 +11,17 @@ from .volume_check_page import VolumeCheckPage
 import csv
 import pandas as pd
 import random
+import matplotlib.pyplot as plt
 import seaborn as sns # TODO: Install seaborn when bundle executable
+import numpy as np
 
 # universal path
-main_path = os.path.join("Volumes", "gurindapalli", "projects", "Plasticity_training")
+main_path = os.path.join("/Volumes", "gurindapalli", "projects", "Plasticity_training")
 
 # TODO: Modify instructions in production training ui
 class TrainingPage(QWidget):
     # Signal emitted to end training and display results
-    end_training_signal = pyqtSignal(str, str, float)
+    end_training_signal = pyqtSignal(str, str, float, object, object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -38,6 +40,8 @@ class TrainingPage(QWidget):
         self.production_accuracy = 0
         self.played_audio_cnt = 0
         self.session_num = 1
+        self.blocks_plot = None
+        self.sessions_plot = None
 
         # Set focus policy to accept keyboard focus
         self.setFocusPolicy(Qt.StrongFocus)
@@ -323,9 +327,6 @@ class TrainingPage(QWidget):
                 button.setEnabled(True)
         QTimer.singleShot(1000, self.play_sound) 
 
-    def finish_training(self):
-        self.end_training_signal.emit(self.participant_id, self.training_type, self.score)
-
     def write_response(self, participant_id, training, audio_file, reaction_time, response=0, solution=0, accuracy=0):
 
         # Create participants folder if it doesn't exist
@@ -411,8 +412,8 @@ class TrainingPage(QWidget):
                 # calculate average accuracy for each tone
                 result = {}
                 for t in correct_tone:
-                    if total_tone[t] == 0:
-                        result[t] = None 
+                    if total_tone[t] == 0:      # if there is no audio files with this tone during training
+                        result[t] = np.nan 
                     else:
                         result[t] = correct_tone[t] / total_tone[t]
 
@@ -425,31 +426,10 @@ class TrainingPage(QWidget):
                 self.score = (self.correct_answers / self.total_questions) if training != "Production Training" else 0
                 session_writer.writerow([self.session_num, datetime.date.today(), "overall", self.score])  
 
-
-    def read_response(self, directory, plot_type):
-        """
-        Helper function to read csv files for plotting accuracy plot.
-
-        Returns:
-            DataFrame: Pandas dataframe that contains trainees' record
-        """
-        if plot_type != "session tracking":
-            csv_files = [file for file in os.listdir(directory) if file.endswith('.csv') and file.startswith(self.training_type)]
-
-        else:
-            csv_files = [file for file in os.listdir(directory) if file.endswith('.csv')]
-        
-        df_list = []
-        for file in csv_files:
-            data = pd.read_csv(os.path.join(directory, file))
-            data["date"] = file.split("_")[0] if plot_type != "session_tracking" else None # TODO: Remove this if there's already date column
-            df_list.append(data)
-        return pd.concat(df_list, ignore_index=True)
-    
     def split_block(self, df, files_per_block):
 
         # Determine response accuracy for perception training
-        df["accuracy"] = df["response"] == df["solution"] if self.training_type != "Production Training" else None
+        df["accuracy"] = df["response"] == df["solution"] if self.training_type != "Production Training" else np.nan
 
         # Assign block numbers
         df["block"] = (df.index // files_per_block).astype(int) + 1
@@ -457,7 +437,8 @@ class TrainingPage(QWidget):
         # Calculate mean accuracy for every block
         group_accuracy = df.groupby('block')['accuracy'].mean() * 100
         df = df.merge(group_accuracy, on=['block'], suffixes=('', '_mean'))
-        df.rename(columns={"accuracy_mean": "accuracy"}, inplace=True) 
+
+        print("df columns: ", df.columns)
 
         return df
 
@@ -473,31 +454,28 @@ class TrainingPage(QWidget):
         global main_path
 
         # read csv files
-        dir = os.path.join(main_path, 
-                            "tone-training-app", 
-                            "participants", 
-                            self.participant_id, 
-                            self.training_type
-                            )
-        df = self.read_csv(dir, "block_tracking")
-
-        # extract the records of current session
-        num = 60        # TODO: Change to len(audio_files_folder) or to correct number
-        df = df[-num:]
+        file = os.path.join(main_path, "tone-training-app", "participants", self.participant_id, self.training_type, f"session{self.session_num}.csv")
+        # file = os.path.join("tone-training-app", "participants", self.participant_id, self.training_type, f"session{self.session_num}.csv")
+        df = pd.read_csv(file)
 
         # split the session into blocks
         df = self.split_block(df, 10)
+        print("Block accuracy Dataframe")
+        print(df)
 
         # plot
-        line = sns.lineplot(df, x="block", y="accuracy", marker="o")
+        fig, ax = plt.subplots()
+        sns.lineplot(df, x="block", y="accuracy_mean", marker="o", ax=ax)
+        
+        # customize plot settings
         xlimit = df["block"].unique()[-1]
-        line.set(xticks=[(i + 1) * 2 for i in range(xlimit // 2)], yticks=[0, 20, 40, 60, 80, 100],
+        ax.set(xticks=[(i + 1) * 2 for i in range(xlimit // 2)], yticks=[0, 20, 40, 60, 80, 100],
                 xlim=(0, xlimit+1), ylim=(0, 105))
-        line.set_xlabel("Block")
-        line.set_ylabel("Accuracy(%)")
-        line.set_title("Participant: " + self.participant_id)
+        ax.set_xlabel("Block")
+        ax.set_ylabel("Accuracy(%)")
+        ax.set_title("Participant: " + self.participant_id)
 
-        return line
+        self.blocks_plot = fig
     
     def plot_session_accuracy(self):
         """ 
@@ -509,27 +487,27 @@ class TrainingPage(QWidget):
 
         global main_path
 
-        # read csv files
-        dir = os.path.join(main_path, 
-                            "tone-training-app", 
-                            "participants", 
-                            self.participant_id, 
-                            "session_tracking"
-                            )
-        df = self.read_response(dir, "session_tracking")
+        # read csv file
+        file = os.path.join(main_path, "tone-training-app", "participants", self.participant_id, "session_tracking", f"{self.training_type}.csv")
+        # file = os.path.join("tone-training-app", "participants", self.participant_id, "session_tracking", f"{self.training_type}.csv")
+        df = pd.read_csv(file).fillna(0)
 
-        # TODO: calculate all accuracy in app with the same scale
-        # adjust accuracy scale to be percentage
-        df.loc[df["subject"] != "overall", "accuracy"] *= 100
+        print("Session accuracy dataframe")
+        print(df)
 
-        # divide dataframe into different sessions for each five rows
-        df["session"] = (df.index // 5).astype(int) + 1
+        # scale accuracy score into percentage
+        df["accuracy"] *= 100
+
+        print("Session accuracy dataframe after processing")
+        print(df) 
 
         # plot
-        line = sns.lineplot(df, x = "session", y = "accuracy", hue = "subject", marker="o", palette=sns.color_palette("Set1", 5))
+        fig, ax = plt.subplots()
+        sns.lineplot(df, x = "session", y = "accuracy", hue = "subject", marker="o", 
+                    palette=sns.color_palette("Set1", 5), ax=ax)
 
         # adjust line attribute to make overall accuracy stand out
-        for line_obj, label in zip(line.lines, line.get_legend().texts):
+        for line_obj, label in zip(ax.lines, ax.get_legend().texts):
                 if label.get_text() != "overall":  
                         line_obj.set_alpha(0.5)
                 else:
@@ -537,17 +515,33 @@ class TrainingPage(QWidget):
 
         # set axis ticks
         xlimit = df["session"].unique()[-1]
-        line.set(xticks=[i for i in range(xlimit + 1)], yticks=[0, 20, 40, 60, 80, 100],
+        ax.set(xticks=[i for i in range(xlimit + 1)], yticks=[0, 20, 40, 60, 80, 100],
                 xlim=(0.5, xlimit+1), ylim=(0, 105))
 
         # set axis labels and title
-        line.set_xlabel("Session")
-        line.set_ylabel("Accuracy(%)")
-        line.set_title("Participant: " + self.participant_id)
+        ax.set_xlabel("Session")
+        ax.set_ylabel("Accuracy(%)")
+        ax.set_title("Participant: " + self.participant_id)
 
         # set legend labels
-        handles, _ = line.get_legend_handles_labels()
+        handles, _ = ax.get_legend_handles_labels()
         new_labels = ["Tone 1", "Tone 2", "Tone 3", "Tone 4", "Overall"]  
-        line.legend(handles=handles, labels=new_labels, title="Subject", loc="upper left", bbox_to_anchor=(1, 1))
+        ax.legend(handles=handles, labels=new_labels, title="Subject", loc="upper left", bbox_to_anchor=(1, 1))
 
-        return line
+        self.sessions_plot = fig
+
+
+    def finish_training(self):
+
+        # generate plot
+        self.plot_block_accuracy()
+        self.plot_session_accuracy()
+
+        if self.blocks_plot is None:
+            print("Error: Plot for block accuracy was not generated.")
+            return
+        elif self.sessions_plot is None:
+            print("Error: Plot for session accuracy was not generated.")
+            return
+
+        self.end_training_signal.emit(self.participant_id, self.training_type, self.score, self.blocks_plot, self.sessions_plot)
