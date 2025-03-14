@@ -325,6 +325,7 @@ class TrainingPage(QWidget):
             for button in self.response_buttons:
                 button.setStyleSheet("")  # remove highlight
                 button.setEnabled(True)
+        self.prompt_label.setText("Listen to the sound")
         QTimer.singleShot(1000, self.play_sound) 
 
     def write_response(self, participant_id, training, audio_file, reaction_time, response=0, solution=0, accuracy=0):
