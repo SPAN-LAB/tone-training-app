@@ -459,7 +459,7 @@ class TrainingPage(QWidget):
         df = self.split_block(df, 10)
 
         # plot
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(1, 1, figsize=(4, 4))
         sns.lineplot(df, x="block", y="accuracy_mean", marker="o", ax=ax)
         
         # customize plot settings
@@ -490,7 +490,7 @@ class TrainingPage(QWidget):
         df["accuracy"] *= 100
 
         # plot
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(1, 1, figsize=(4, 4))
         sns.lineplot(df, x = "session", y = "accuracy", hue = "subject", marker="o", 
                     palette=sns.color_palette("Set1", 5), ax=ax)
 

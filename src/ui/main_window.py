@@ -9,10 +9,11 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Tone Training Application")
-        self.setFixedSize(600, 300)
+        # self.setFixedSize(600, 300)
+        self.showMaximized()
 
         # Disable the maximize button
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
+        # self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -48,9 +49,9 @@ class MainWindow(QMainWindow):
         # Switch to the training page
         self.stacked_widget.setCurrentWidget(self.training_page)
 
-    def finish_training(self, participant_id, training_type, score):
+    def finish_training(self, participant_id, training_type, score, blocks_plot, sessions_plot):
         # Send feedback data to FeedbackPage
-        self.feedback_page.set_feedback_data(participant_id, training_type, score)
+        self.feedback_page.set_feedback_data(participant_id, training_type, score, blocks_plot, sessions_plot)
         self.stacked_widget.setCurrentWidget(self.feedback_page)
 
     def return_to_start(self):
