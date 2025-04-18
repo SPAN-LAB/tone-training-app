@@ -1,19 +1,16 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+from .volume_check_page import VolumeCheckPage
+
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QErrorMessage
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QKeyEvent
+
+import os, re, datetime, time, csv, random
 import sounddevice as sd
 import soundfile as sf
-import os
-import re
-import datetime
-import time
-from .volume_check_page import VolumeCheckPage
-import csv
-import pandas as pd
-import random
-import matplotlib.pyplot as plt
-import seaborn as sns # TODO: Install seaborn when bundle executable
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns 
 
 # universal path
 main_path = os.path.join("/Volumes", "gurindapalli", "projects", "Plasticity_training")
@@ -25,26 +22,41 @@ class TrainingPage(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.current_sound = None
-        self.sounds = []
+
+        # Session Information
         self.participant_id = ""
         self.training_type = ""
         self.audio_device_id = None
         self.input_device_id = None  
-        self.correct_answers = 0
-        self.total_questions = 0
+        self.session_num = 1
+
+        # Playing Sounds
+        self.current_sound = None
+        self.sounds = []
+        self.played_audio_cnt = 0
+   
+        # Perception training
+        self.correct_response = 0
+        self.total_sound_files = 0
+        self.response_buttons = None
+        self.setFocusPolicy(Qt.StrongFocus)     # Set focus policy to accept keyboard focus
+
+        # Production training
         self.is_recording = False  
         self.recorded_audio_path = ""  # Path for storing users' recordings production training
-        self.response_buttons = None
-        self.start_time = None
         self.production_accuracy = 0
-        self.played_audio_cnt = 0
-        self.session_num = 1
+
+        self.start_time = None
+
+        # Feedback
+        self.response_file_path = ""
+        self.session_track_file_path = ""
+        self.date = datetime.date.today()
         self.blocks_plot = None
         self.sessions_plot = None
 
-        # Set focus policy to accept keyboard focus
-        self.setFocusPolicy(Qt.StrongFocus)
+        # Error message
+        self.error_dialog = QErrorMessage(self)
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -92,48 +104,54 @@ class TrainingPage(QWidget):
         self.visualization_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.visualization_label)
 
-        # Feedback label for text feedback on reproduction accuracy
+        # TODO: Update feedback label
         self.feedback_label = QLabel("")
         self.feedback_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.feedback_label)
 
     def setup_training(self, participant_id, training_type, sounds, device_id, input_device_id=None):
+
+        # initialization
         self.participant_id = participant_id
         self.training_type = training_type
         self.sounds = sounds
         self.audio_device_id = device_id  
         self.input_device_id = input_device_id  
-        self.correct_answers = 0
-        self.total_questions = len(sounds)
+        self.correct_response = 0
+        self.total_sound_files = len(sounds)
 
         # random shuffle audio files
         random.shuffle(self.sounds)
         
+        # setup training UI
         if training_type == "Production Training":
             self.setup_production_training()
         else:
             self.setup_ui()
 
-        # print("In setup_training() in training_page.py")
-        # print("After assign current sound: ", self.current_sound, self.sounds)
+        # start playing audio files
         QTimer.singleShot(1000, self.play_sound)  
 
-    def play_sound(self):
-        # print("In play sound()")
-        # print("Remaining sound file: ", [f for f in self.sounds])
-
-        # block training
-        if self.played_audio_cnt % 20 == 0 and self.played_audio_cnt > 0 and self.sounds:
-            if self.response_buttons is not None:
+    def disable_response_button(self):
+        if self.response_buttons is not None:
                 for button in self.response_buttons:
                     button.setEnabled(False)
-            self.start_countdown(30, False)    # take 30 seconds break after playing 20 audio files
-            self.played_audio_cnt = 0   # reinitialize played audio file count as zero to prevent loop
+
+    def play_sound(self):
+
+        # block training (20 audio files per block)
+        if self.played_audio_cnt % 20 == 0 and self.played_audio_cnt > 0 and self.sounds:
+
+            self.disable_response_button()      # disable response button
+            self.start_countdown(30, False)     # 30 seconds break
+            self.played_audio_cnt = 0           # reset played audio file count to zero
+
             return
 
+        # play audio files
         if self.sounds:
             self.current_sound = self.sounds.pop(0)
-            self.played_audio_cnt += 1  # increment count of played audio file
+            self.played_audio_cnt += 1 
 
             try:    
                 if self.response_buttons is not None:
@@ -151,31 +169,26 @@ class TrainingPage(QWidget):
                 if not full_path.endswith(".mp3"):
                     full_path += "_MP3.mp3"  
 
-                # Check if the file actually exists
+                # Check if the file exists
                 if not os.path.isfile(full_path):
                     raise FileNotFoundError(f"File not found: {full_path}")
                 
-                # Read the sound file to determine its sample rate and number of channels
-                data, fs = sf.read(full_path, dtype="float32")
+               # read sound file for sample rate and number of channels
+                data, fs = sf.read(full_path, dtype="float32")   
 
                 # Adjust volume of sound file
                 volume_factor = 0.3
                 data *= volume_factor
-
-                # Set the audio device
-                sd.default.device = self.audio_device_id
-
-                # Start timer for reaction time
-                self.start_time = time.time()
-
-                # Play the sound file
-                sd.play(data, fs, blocking=True)  
+               
+                sd.default.device = self.audio_device_id    # Set the audio device
+                self.start_time = time.time()               # Start reaction timer
+                sd.play(data, fs, blocking=True)            # Play audio file
                 
-                # Update UI after playback
+                # update UI after playing audio file
                 if self.training_type == "Production Training":
                     self.prompt_label.setText("Try to reproduce the sound")
-                    # print("In play_sound(), within if stmt for production training")
                     self.toggle_recording()
+                
                 else:
                     self.prompt_label.setText("Select the sound you heard")
                     if self.response_buttons is not None:
@@ -185,6 +198,7 @@ class TrainingPage(QWidget):
             except FileNotFoundError as fnf_error:
                 print(f"Error: {fnf_error}")
                 self.prompt_label.setText("Error: Sound file not found")
+                
             except Exception as e:
                 print(f"Error playing sound: {e}")
                 self.prompt_label.setText("Error playing sound")
@@ -192,13 +206,18 @@ class TrainingPage(QWidget):
             self.finish_training()
 
     def toggle_recording(self):
-        # Start or stop recording based on current state
+        """
+        Start or stop recording based on current state
+        """
         if not self.is_recording:
             self.start_recording()
         else:
             self.stop_recording()
 
     def start_recording(self):
+        """
+        Start recording.
+        """
         self.is_recording = True
         self.prompt_label.setText("Recording... Try to match the original sound")
 
@@ -217,6 +236,38 @@ class TrainingPage(QWidget):
         # Start recording and countdown timer
         self.recording = sd.rec(int(3 * 44100), samplerate=44100, channels=1)
         self.start_countdown(3, recording=True) 
+
+
+    def stop_recording(self):
+        self.is_recording = False
+        sd.stop()
+
+        end_time = time.time()
+        reaction_time = end_time - self.start_time if self.start_time else 0
+
+        sf.write(self.recorded_audio_path, self.recording, 44100)
+        self.prompt_label.setText("Recording complete. Analyzing...")
+
+        # write response file
+        self.write_response(self.participant_id, 
+                            self.training_type, 
+                            self.current_sound.split("/")[-1], 
+                            reaction_time, 
+                            accuracy=self.production_accuracy)
+
+        self.analyze_recording()
+        # TODO: Delete recording after analysis 
+
+    def analyze_recording(self):
+
+        # Placeholder: Implement pitch comparison and feedback display
+        self.visualization_label.setText("Comparing original and recorded pitch tracks...")
+
+        # TODO: Implement accuracy calculation
+        
+        # TODO: Display actual pitch track visualization and compute similarity
+        self.provide_feedback()
+
 
     def start_countdown(self, seconds, recording):
         self.remaining_time = seconds
@@ -248,34 +299,7 @@ class TrainingPage(QWidget):
                 if self.response_buttons is not None:
                     for button in self.response_buttons:
                         button.setEnabled(True)
-
-    def stop_recording(self):
-        self.is_recording = False
-        sd.stop()
-
-        end_time = time.time()
-        reaction_time = end_time - self.start_time if self.start_time else 0
-
-        sf.write(self.recorded_audio_path, self.recording, 44100)
-        self.prompt_label.setText("Recording complete. Analyzing...")
-
-        # write to response file
-        self.write_response(self.participant_id, self.training_type, self.current_sound.split("/")[-1], 
-                            reaction_time, accuracy=self.production_accuracy)
-
-        self.analyze_recording()
-        # TODO: Delete recording after analysis 
-
-    def analyze_recording(self):
-
-        # Placeholder: Implement pitch comparison and feedback display
-        self.visualization_label.setText("Comparing original and recorded pitch tracks...")
-
-        # TODO: Implement accuracy calculation
-        
-        # TODO: Display actual pitch track visualization and compute similarity
-        self.provide_feedback()
-
+                QTimer.singleShot(1000, self.play_sound)
 
     def process_response(self, response):
 
@@ -291,7 +315,7 @@ class TrainingPage(QWidget):
         correct_answer = int(re.findall("[0-9]+", self.current_sound)[0])
         is_correct = response == correct_answer
         if is_correct:
-            self.correct_answers += 1
+            self.correct_response += 1
 
         # display feedback on screen 
         self.provide_feedback(is_correct, correct_answer)
@@ -328,72 +352,109 @@ class TrainingPage(QWidget):
         self.prompt_label.setText("Listen to the sound")
         QTimer.singleShot(1000, self.play_sound) 
 
+    def create_response_file(self, participant_id, training):
+
+        # create directory
+        create_file_path = os.path.join("participants", participant_id, training, "session_tracking")
+        os.makedirs(create_file_path, exist_ok=True)
+
+        # determine session number for file name
+        file_path = os.path.join("participants", participant_id, training) 
+        session_nums = [int(re.findall(r"\d+", file)[0]) for file in os.listdir(file_path) if file.endswith(".csv")]
+        print("Session nums: ", session_nums)
+        if session_nums:
+            self.session_num = max(session_nums) 
+            self.session_num += 1 
+        file_name = f"session{self.session_num}.csv"
+
+        # create response file
+        self.response_file_path = os.path.join(file_path, file_name)
+        try:
+            with open(self.response_file_path, 'w', newline='') as csvfile:
+                header = ["date", "audio_file", "response", "solution", "reaction_time"]
+                if training == "Production Training":
+                    header.append("accuracy")
+                csv.writer(csvfile).writerow(header)
+
+        except Exception as e:
+            self.error_dialog.showMessage(f"Error: Failed to create response file. {e}")
+            print(f"Error creating response file: {e}")
+
+        # create session tracking file
+        self.session_track_file_path = os.path.join(file_path, "session_tracking", file_name)
+        try:
+            with open(self.session_track_file_path, 'w', newline='') as csvfile:
+                header = ["session", "date", "subject", "accuracy"]
+                csv.writer(csvfile).writerow(header)
+
+        except Exception as e:
+            self.error_dialog.showMessage(f"Error: Failed to create session tracking file for {training}. {e}")
+            print(f"Error creating session tracking file: {e}")
+
     def write_response(self, participant_id, training, audio_file, reaction_time, response=0, solution=0, accuracy=0):
 
-        # Create participants folder if it doesn't exist
-        participant_folder = os.path.join("participants", participant_id)
-        os.makedirs(participant_folder, exist_ok=True)
+        # # Create participants folder if it doesn't exist
+        # participant_folder = os.path.join("participants", participant_id)
+        # os.makedirs(participant_folder, exist_ok=True)
         
-        # Create training folder inside the participant's folder if it doesn't exist
-        training_folder = os.path.join(participant_folder, training)
-        folder_exist = os.path.exists(training_folder)
-        os.makedirs(training_folder, exist_ok=True)
+        # # Create training folder inside the participant's folder if it doesn't exist
+        # training_folder = os.path.join(participant_folder, training)
+        # folder_exist = os.path.exists(training_folder)
+        # os.makedirs(training_folder, exist_ok=True)
+
+        # # Obtain previous session number
+        # print("played audio count: ", self.played_audio_cnt)
+        # if folder_exist and self.played_audio_cnt == 1:
+        #     self.session_nums = [int(re.findall(r"\d+", file)[0]) for file in os.listdir(training_folder) if file.endswith(".csv")]
+        #     self.session_num = max(self.session_nums)
+        #     self.session_num += 1
+
+        # # Define the response file path
+        # response_file = os.path.join(training_folder, f"session{self.session_num}.csv")
         
-        # Obtain previous session number
-        print("played audio count: ", self.played_audio_cnt)
-        if folder_exist and self.played_audio_cnt == 1:
-            self.session_nums = [int(re.findall(r"\d+", file)[0]) for file in os.listdir(training_folder) if file.endswith(".csv")]
-            self.session_num = max(self.session_nums)
-            self.session_num += 1
+        # # Check if the file already exists
+        # file_exists = os.path.isfile(response_file)
 
-        print("Session number: ", self.session_num)
 
-        # Define the response file path
-        response_file = os.path.join(training_folder, f"session{self.session_num}.csv")
-        
-        # Check if the file already exists
-        file_exists = os.path.isfile(response_file)
-        
-        # Open the file in append mode and write the data
-        with open(response_file, mode="a", newline="") as csv_file:
-            csv_writer = csv.writer(csv_file)
+        # # Define the session tracking folder path
+        # session_folder = os.path.join("participants", participant_id, "session_tracking")
+        # os.makedirs(session_folder, exist_ok=True)
 
-            if training != "Production Training":
-            
-                if not file_exists:
-                    csv_writer.writerow(["date", "audio_file", "response", "solution", "reaction_time"])
-                
-                csv_writer.writerow([datetime.date.today(), audio_file, response, solution, round(reaction_time, 4)])
+        # # Create three files for the respective training names
+        # training_file = os.path.join(session_folder, f"{training}.csv")
 
-            else:
-                if not file_exists:
-                    csv_writer.writerow(["date", "audio_file", "accuracy", "reaction_time"])
-                
-                csv_writer.writerow([datetime.date.today(), audio_file, accuracy, round(reaction_time, 4)])
+        # # Check if the file already exists
+        # file_exists = os.path.isfile(training_file)
 
-        # Define the session tracking folder path
-        session_folder = os.path.join("participants", participant_id, "session_tracking")
-        os.makedirs(session_folder, exist_ok=True)
 
-        # Create three files for the respective training names
-        training_file = os.path.join(session_folder, f"{training}.csv")
+        # create response file and session tracking file
+        if self.response_file_path == '' or self.session_track_file_path == '':
+            self.create_response_file(participant_id, training)
 
-        # Check if the file already exists
-        file_exists = os.path.isfile(training_file)
+        # write response file
+        with open(self.response_file_path, mode="a", newline="") as response_file:
+            response_writer = csv.writer(response_file)
 
-        # Write training session accuracy
+            response = [self.date, audio_file, response, solution, round(reaction_time, 4)]
+
+            if training == "Production Training":               
+                response.append(accuracy) 
+                    
+            response_writer.writerow(response)
+
+        # write session tracking file
         if len(self.sounds) == 0:
 
-            # Open the training file in append mode and write session data
-            with open(training_file, mode="a", newline="") as session_file:
+            with open(self.session_track_file_path, mode="a", newline="") as session_file:
                 session_writer = csv.writer(session_file)
 
-                # Write header if file does not exist
-                if not file_exists:
-                    session_writer.writerow(["session", "date", "subject", "accuracy"])
+                # # Write header if file does not exist
+                # if not file_exists:
+                #     session_writer.writerow(["session", "date", "subject", "accuracy"])
+                # df = pd.read_csv(f"{response_file}")
 
                 # Read response file to compute tone accuracy
-                df = pd.read_csv(f"{response_file}")
+                df = pd.read_csv(self.response_file_path)
                 total_tone = {"1":0, "2":0, "3":0, "4":0}
                 correct_tone = {"1":0, "2":0, "3":0, "4":0}
 
@@ -403,12 +464,9 @@ class TrainingPage(QWidget):
                     tone = re.search(r'\d+', item["audio_file"]).group()   
                     total_tone[tone] += 1
 
-                    # get number of correct answer for perception and accuracy for production
-                    if training != "Production Training":
-                        if item["response"] == item["solution"]:
-                            correct_tone[tone] += 1
-                    else:
-                        correct_tone[tone] += item["accuracy"]
+                    # count correct answer
+                    if item["response"] == item["solution"]:
+                        correct_tone[tone] += 1
 
                 # calculate average accuracy for each tone
                 result = {}
@@ -418,19 +476,20 @@ class TrainingPage(QWidget):
                     else:
                         result[t] = correct_tone[t] / total_tone[t]
 
-                # Write the date and accuracy information for every tone in the session
+                # write data 
                 for key, value in result.items():
-                    session_writer.writerow([self.session_num,datetime.date.today(), key, value])  
+                    session_writer.writerow([self.session_num, self.date, key, value])  
 
-                # Write the date and overall accuracy information
-                # TODO: Calculate the overall accuracy for production
-                self.score = (self.correct_answers / self.total_questions) if training != "Production Training" else 0
-                session_writer.writerow([self.session_num, datetime.date.today(), "overall", self.score])  
+                # calculate average accuracy overall
+                self.score = (self.correct_response / self.total_sound_files)
+
+                # write data
+                session_writer.writerow([self.session_num, self.date, "overall", self.score])  
 
     def split_block(self, df, files_per_block):
 
         # Determine response accuracy for perception training
-        df["accuracy"] = df["response"] == df["solution"] if self.training_type != "Production Training" else np.nan
+        df["accuracy"] = df["response"] == df["solution"]
 
         # Assign block numbers
         df["block"] = (df.index // files_per_block).astype(int) + 1
@@ -450,11 +509,10 @@ class TrainingPage(QWidget):
             matplotlib Axes: Line plot show the tone accuracy over blocks.
         """
 
-        global main_path
-
         # read csv files
-        file = os.path.join(main_path, "tone-training-app", "participants", self.participant_id, self.training_type, f"session{self.session_num}.csv")
-        df = pd.read_csv(file)
+        # file = os.path.join(main_path, "tone-training-app", "participants", self.participant_id, self.training_type, f"session{self.session_num}.csv")
+        # df = pd.read_csv(file)
+        df = pd.read_csv(self.response_file_path)
 
         # split the session into blocks
         df = self.split_block(df, 10)
@@ -481,11 +539,10 @@ class TrainingPage(QWidget):
             matplotlib Axes: Line plot show the tone accuracy over blocks.
         """
 
-        global main_path
-
         # read csv file
-        file = os.path.join(main_path, "tone-training-app", "participants", self.participant_id, "session_tracking", f"{self.training_type}.csv")
-        df = pd.read_csv(file).fillna(0)
+        # file = os.path.join(main_path, "tone-training-app", "participants", self.participant_id, "session_tracking", f"{self.training_type}.csv")
+        # df = pd.read_csv(file).fillna(0)
+        df = pd.read_csv(self.session_track_file_path).fillna(0)
 
         # scale accuracy score into percentage
         df["accuracy"] *= 100
@@ -527,10 +584,10 @@ class TrainingPage(QWidget):
         self.plot_session_accuracy()
 
         if self.blocks_plot is None:
-            print("Error: Plot for block accuracy was not generated.")
+            self.error_dialog.showMessage("Error: Plot for block accuracy was not generated.")
             return
         elif self.sessions_plot is None:
-            print("Error: Plot for session accuracy was not generated.")
+            self.error_dialog.showMessage("Error: Plot for session accuracy was not generated.")
             return
 
         self.end_training_signal.emit(self.participant_id, self.training_type, self.score, self.blocks_plot, self.sessions_plot)
