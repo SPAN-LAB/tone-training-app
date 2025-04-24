@@ -354,21 +354,23 @@ class TrainingPage(QWidget):
 
     def create_response_file(self, participant_id, training):
 
-        # create directory
-        create_file_path = os.path.join("participants", participant_id, training, "session_tracking")
-        os.makedirs(create_file_path, exist_ok=True)
+        # create directory for block training and session tracking respectively
+        block_training_dir = os.path.join("participants", participant_id, training, "block_training")
+        session_track_dir = os.path.join("participants", participant_id, training, "session_tracking")
+
+        os.makedirs(block_training_dir, exist_ok=True)
+        os.makedirs(session_track_dir, exist_ok=True)
 
         # determine session number for file name
-        file_path = os.path.join("participants", participant_id, training) 
-        session_nums = [int(re.findall(r"\d+", file)[0]) for file in os.listdir(file_path) if file.endswith(".csv")]
+        session_nums = [int(re.findall(r"\d+", file)[0]) for file in os.listdir(block_training_dir) if file.endswith(".csv")]
         print("Session nums: ", session_nums)
         if session_nums:
             self.session_num = max(session_nums) 
             self.session_num += 1 
         file_name = f"session{self.session_num}.csv"
 
-        # create response file
-        self.response_file_path = os.path.join(file_path, file_name)
+        # create block training response file
+        self.response_file_path = os.path.join(block_training_dir, file_name)
         try:
             with open(self.response_file_path, 'w', newline='') as csvfile:
                 header = ["date", "audio_file", "response", "solution", "reaction_time"]
@@ -381,7 +383,7 @@ class TrainingPage(QWidget):
             print(f"Error creating response file: {e}")
 
         # create session tracking file
-        self.session_track_file_path = os.path.join(file_path, "session_tracking", file_name)
+        self.session_track_file_path = os.path.join(session_track_dir, file_name)
         try:
             with open(self.session_track_file_path, 'w', newline='') as csvfile:
                 header = ["session", "date", "subject", "accuracy"]
@@ -392,40 +394,6 @@ class TrainingPage(QWidget):
             print(f"Error creating session tracking file: {e}")
 
     def write_response(self, participant_id, training, audio_file, reaction_time, response=0, solution=0, accuracy=0):
-
-        # # Create participants folder if it doesn't exist
-        # participant_folder = os.path.join("participants", participant_id)
-        # os.makedirs(participant_folder, exist_ok=True)
-        
-        # # Create training folder inside the participant's folder if it doesn't exist
-        # training_folder = os.path.join(participant_folder, training)
-        # folder_exist = os.path.exists(training_folder)
-        # os.makedirs(training_folder, exist_ok=True)
-
-        # # Obtain previous session number
-        # print("played audio count: ", self.played_audio_cnt)
-        # if folder_exist and self.played_audio_cnt == 1:
-        #     self.session_nums = [int(re.findall(r"\d+", file)[0]) for file in os.listdir(training_folder) if file.endswith(".csv")]
-        #     self.session_num = max(self.session_nums)
-        #     self.session_num += 1
-
-        # # Define the response file path
-        # response_file = os.path.join(training_folder, f"session{self.session_num}.csv")
-        
-        # # Check if the file already exists
-        # file_exists = os.path.isfile(response_file)
-
-
-        # # Define the session tracking folder path
-        # session_folder = os.path.join("participants", participant_id, "session_tracking")
-        # os.makedirs(session_folder, exist_ok=True)
-
-        # # Create three files for the respective training names
-        # training_file = os.path.join(session_folder, f"{training}.csv")
-
-        # # Check if the file already exists
-        # file_exists = os.path.isfile(training_file)
-
 
         # create response file and session tracking file
         if self.response_file_path == '' or self.session_track_file_path == '':
@@ -448,12 +416,7 @@ class TrainingPage(QWidget):
             with open(self.session_track_file_path, mode="a", newline="") as session_file:
                 session_writer = csv.writer(session_file)
 
-                # # Write header if file does not exist
-                # if not file_exists:
-                #     session_writer.writerow(["session", "date", "subject", "accuracy"])
-                # df = pd.read_csv(f"{response_file}")
-
-                # Read response file to compute tone accuracy
+                # Read response file
                 df = pd.read_csv(self.response_file_path)
                 total_tone = {"1":0, "2":0, "3":0, "4":0}
                 correct_tone = {"1":0, "2":0, "3":0, "4":0}
@@ -510,8 +473,6 @@ class TrainingPage(QWidget):
         """
 
         # read csv files
-        # file = os.path.join(main_path, "tone-training-app", "participants", self.participant_id, self.training_type, f"session{self.session_num}.csv")
-        # df = pd.read_csv(file)
         df = pd.read_csv(self.response_file_path)
 
         # split the session into blocks
@@ -539,11 +500,15 @@ class TrainingPage(QWidget):
             matplotlib Axes: Line plot show the tone accuracy over blocks.
         """
 
-        # read csv file
-        # file = os.path.join(main_path, "tone-training-app", "participants", self.participant_id, "session_tracking", f"{self.training_type}.csv")
-        # df = pd.read_csv(file).fillna(0)
-        df = pd.read_csv(self.session_track_file_path).fillna(0)
-
+        # read all session tracking files
+        session_track_folder = os.path.split(self.session_track_file_path)[0]
+        session_track_list = os.listdir(session_track_folder)
+        df = ( pd.concat([pd.read_csv(os.path.join(session_track_folder, file)) for file in session_track_list])
+              .reset_index()
+              .fillna(0)
+              .drop(["index"], axis=1)
+        )
+        
         # scale accuracy score into percentage
         df["accuracy"] *= 100
 
