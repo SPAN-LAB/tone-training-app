@@ -11,11 +11,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns 
-
-# universal path
-main_path = os.path.join("/Volumes", "gurindapalli", "projects", "Plasticity_training")
-
-# TODO: Modify instructions in production training ui
 class TrainingPage(QWidget):
     # Signal emitted to end training and display results
     end_training_signal = pyqtSignal(str, str, float, object, object)
