@@ -2,7 +2,7 @@ from .volume_check_page import VolumeCheckPage
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QErrorMessage
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QKeyEvent
+from PyQt5.QtGui import QKeyEvent, QFont
 
 import os, re, datetime, time, csv, random
 import sounddevice as sd
@@ -59,21 +59,34 @@ class TrainingPage(QWidget):
         # Prompt label
         self.prompt_label = QLabel("Listen to the sound")
         self.prompt_label.setAlignment(Qt.AlignCenter)
+        font = QFont()
+        font.setPointSize(50)
+        self.prompt_label.setFont(font)
         layout.addWidget(self.prompt_label)
 
         # Response buttons
-        response_layout = QHBoxLayout()
+        response_layout_1 = QHBoxLayout()
+        response_layout_2 = QHBoxLayout()
         self.response_buttons = []
+        
+        # Creating response buttons
         for i in range(1, 5):
             button = QPushButton(str(i))
+            button.setMinimumSize(250, 250)
+            button.setFont(font)
             button.clicked.connect(lambda _, x=i: self.process_response(x))
-            response_layout.addWidget(button)
+            if i < 3:
+                response_layout_1.addWidget(button)
+            else:
+                response_layout_2.addWidget(button)
             self.response_buttons.append(button)
-        layout.addLayout(response_layout)
+        layout.addLayout(response_layout_1)
+        layout.addLayout(response_layout_2)
 
         # Feedback label
         self.feedback_label = QLabel("")
         self.feedback_label.setAlignment(Qt.AlignCenter)
+        self.feedback_label.setFont(font)
         layout.addWidget(self.feedback_label)
 
     def keyPressEvent(self, event: QKeyEvent):
