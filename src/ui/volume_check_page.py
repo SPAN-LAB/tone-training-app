@@ -4,7 +4,7 @@ import sounddevice as sd
 import numpy as np
 
 class VolumeCheckPage(QWidget):
-    # Signal emitted when volume check is complete, sending success flag to proceed
+    # emit signal when finish volume check
     volume_check_complete = pyqtSignal(bool)
 
     def __init__(self, input_device_id=None, parent=None):
