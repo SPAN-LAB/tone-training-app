@@ -1,6 +1,6 @@
 @echo off
 REM Stop execution on errors
-setlocal
+setlocal enabledelayedexpansion
 
 REM Set up Python (Make sure Python 3.9 is installed on the teammates system)
 echo Checking Python version...
@@ -20,16 +20,28 @@ pip install --upgrade pip
 
 REM Install dependencies
 echo Installing dependencies...
-pip install pyinstaller PyQt5 sounddevice soundfile numpy cffi pycparser pandas matplotlib seaborn soundfile QFont
+pip install pyinstaller Pillow PyQt5 sounddevice soundfile numpy cffi pycparser pandas matplotlib seaborn
 
-REM Clean previous builds
+REM Cleaning previous builds
 echo Cleaning previous builds...
-rmdir /s /q build dist 2>nul
-del /q *.spec 2>nul
+if exist build rmdir /s /q build
+if exist dist rmdir /s /q dist
+if exist *.spec del /q *.spec
 
 REM Build the executable using PyInstaller
 echo Building the executable...
-pyinstaller --onefile --windowed --hidden-import sounddevice --hidden-import soundfile --hidden-import pandas --hidden-import matplotlib --hidden-import seaborn --hidden-import soundfile --hidden-import QFont --add-data "src/ui;ui" --add-data "src/training;training" src/main.py
+pyinstaller --onefile --windowed ^
+--hidden-import sounddevice ^
+--hidden-import soundfile ^
+--hidden-import pandas ^
+--hidden-import matplotlib ^
+--hidden-import seaborn ^
+--hidden-import PyQt5 ^
+--hidden-import PIL._imaging ^
+--hidden-import PIL._avif ^
+--add-data "src/ui;ui" ^
+--add-data "src/training;training" ^
+src/main.py
 
 REM Deactivate the virtual environment
 deactivate

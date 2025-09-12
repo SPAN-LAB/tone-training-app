@@ -9,11 +9,6 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Tone Training Application")
-        # self.setFixedSize(600, 300)
-        self.showMaximized()
-
-        # Disable the maximize button
-        # self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -41,6 +36,7 @@ class MainWindow(QMainWindow):
         self.feedback_page.return_to_start_signal.connect(self.return_to_start)
         self.start_page.volume_check_signal.connect(self.volume_check)
         self.volume_check_page.volume_check_complete.connect(self.start_training_after_volume_check)
+        self.showMaximized()  # Start maximized
 
     def start_training(self, participant_id, training_type, sounds, device_id):
         # Set up training session in the training page with all necessary parameters

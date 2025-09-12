@@ -1,6 +1,6 @@
 from .volume_check_page import VolumeCheckPage
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QErrorMessage
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QErrorMessage, QApplication
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QKeyEvent, QFont
 
@@ -52,6 +52,10 @@ class TrainingPage(QWidget):
 
         # Error message
         self.error_dialog = QErrorMessage(self)
+        # Start Maximized
+        self.showMaximized()
+        # Disable the maximize button
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -144,17 +148,24 @@ class TrainingPage(QWidget):
         if self.response_buttons is not None:
                 for button in self.response_buttons:
                     button.setEnabled(False)
+    
+    def takeBreak(self):
+        self.disable_response_button()
+        self.start_countdown(30, False)  # 30 seconds break
+        self.played_audio_cnt = 0        # reset played audio file count to zero
+        
+        return
 
     def play_sound(self):
 
         # block training (20 audio files per block)
-        if self.played_audio_cnt % 20 == 0 and self.played_audio_cnt > 0 and self.sounds:
+        # if self.played_audio_cnt % 20 == 0 and self.played_audio_cnt > 0 and self.sounds:
 
-            self.disable_response_button()      # disable response button
-            self.start_countdown(30, False)     # 30 seconds break
-            self.played_audio_cnt = 0           # reset played audio file count to zero
+        #     self.disable_response_button()      # disable response button
+        #     self.start_countdown(30, False)     # 30 seconds break
+        #     self.played_audio_cnt = 0           # reset played audio file count to zero
 
-            return
+        #     return
 
         # play audio files
         if self.sounds:
@@ -356,9 +367,13 @@ class TrainingPage(QWidget):
         if self.response_buttons is not None:
             for button in self.response_buttons:
                 button.setStyleSheet("")  # remove highlight
-                button.setEnabled(True)
-        self.prompt_label.setText("Listen to the sound")
-        QTimer.singleShot(1000, self.play_sound) 
+                button.setEnabled(False)  # disable buttons until next sound is played
+        # Only call play_sound if a break is NOT about to start
+        if not (self.played_audio_cnt % 20 == 0 and self.played_audio_cnt > 0 and self.sounds):
+            QTimer.singleShot(1000, self.play_sound)
+            self.prompt_label.setText("Listen to the sound") 
+        else:
+            self.takeBreak() 
 
     def create_response_file(self, participant_id, training):
 
