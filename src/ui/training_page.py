@@ -11,6 +11,24 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns 
+import parselmouth
+
+from parselmouth.praat import call
+
+
+import sys
+import os
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 class TrainingPage(QWidget):
     # Signal emitted to end training and display results
     end_training_signal = pyqtSignal(str, str, float, object, object)
@@ -116,6 +134,11 @@ class TrainingPage(QWidget):
         self.visualization_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.visualization_label)
 
+        self.continue_button = QPushButton("Continue")
+        self.continue_button.clicked.connect(self.next_trial)
+        self.continue_button.hide()
+        layout.addWidget(self.continue_button)
+
         # TODO: Update feedback label
         self.feedback_label = QLabel("")
         self.feedback_label.setAlignment(Qt.AlignCenter)
@@ -179,14 +202,14 @@ class TrainingPage(QWidget):
                     self.feedback_label.clear()
 
                 # Construct the full path within resources/sounds and ensure .mp3 extension
-                full_path = os.path.join(
-                    "R:\\projects\\tone-training-app\\resources\\sounds",
-                    self.current_sound,
-                )
+                # Use the full path directly. No need to build a new one.
+                full_path = self.current_sound
 
-                # Append .mp3 extension if missing
-                if not full_path.endswith(".mp3"):
-                    full_path += "_MP3.mp3"  
+                # Append .mp3 extension if missing (removed weird suffix append)
+                # Assume the provided path from StartPage is correct; if no .mp3 extension,
+                # try adding '.mp3' (not the previous '_MP3.mp3' suffix)
+                if not full_path.lower().endswith(".mp3"):
+                    full_path += ".mp3"
 
                 # Check if the file exists
                 if not os.path.isfile(full_path):
@@ -201,7 +224,9 @@ class TrainingPage(QWidget):
                
                 sd.default.device = self.audio_device_id    # Set the audio device
                 self.start_time = time.time()               # Start reaction timer
-                sd.play(data, fs, blocking=True)            # Play audio file
+                # Play audio non-blocking and wait to avoid unsupported kwarg on some versions
+                sd.play(data, fs)
+                sd.wait()
                 
                 # update UI after playing audio file
                 if self.training_type == "Production Training":
@@ -245,8 +270,9 @@ class TrainingPage(QWidget):
         os.makedirs(participant_folder, exist_ok=True)
 
         date = datetime.date.today()
-        file = self.current_sound.split("/")[-1]
-        file = file.split(".")[0]
+        # Correctly extract the base filename, removing the extension
+        file = os.path.basename(self.current_sound)
+        file = os.path.splitext(file)[0]
         self.recorded_audio_path = os.path.join(participant_folder, f"{date}_{file}.wav")
 
         # Set default device
@@ -278,14 +304,89 @@ class TrainingPage(QWidget):
         # TODO: Delete recording after analysis 
 
     def analyze_recording(self):
+        try:
+            # 1. Extract pitch from both original and recorded audio
+            original_pitch = self.extract_pitch(self.current_sound)
+            recorded_pitch = self.extract_pitch(self.recorded_audio_path)
 
-        # Placeholder: Implement pitch comparison and feedback display
-        self.visualization_label.setText("Comparing original and recorded pitch tracks...")
+            if original_pitch is None or recorded_pitch is None:
+                self.feedback_label.setText("Could not analyze pitch. Moving to next sound.")
+                QTimer.singleShot(2000, self.next_trial)
+                return
+            
+            # Get the frequency and time data from the Pitch objects
+            # CORRECTED: Use .selected_array['frequency'] instead of .values
+            original_pitch_values = original_pitch.selected_array['frequency']
+            recorded_pitch_values = recorded_pitch.selected_array['frequency']
 
-        # TODO: Implement accuracy calculation
-        
-        # TODO: Display actual pitch track visualization and compute similarity
-        self.provide_feedback()
+            # Check if pitch was detected in both files
+            if not np.any(original_pitch_values) or not np.any(recorded_pitch_values):
+                self.feedback_label.setText("No pitch detected in one of the sounds. Cannot compare.")
+                self.continue_button.show()
+                return
+
+            # 2. Create a plot comparing the two pitches
+            fig, ax = plt.subplots()
+            
+            # CORRECTED: Use .ts() instead of .xs() to get the time values for the x-axis
+            ax.plot(original_pitch.ts(), original_pitch_values, label='Original')
+            ax.plot(recorded_pitch.ts(), recorded_pitch_values, label='Your Pitch')
+            
+            ax.legend()
+            ax.set_title("Pitch Contour Comparison")
+            ax.set_xlabel("Time (s)")
+            ax.set_ylabel("Frequency (Hz)")
+
+            # 3. Display the plot in the visualization_label
+            from io import BytesIO
+            buf = BytesIO()
+            fig.savefig(buf, format='png')
+            buf.seek(0)
+            
+            from PyQt5.QtGui import QPixmap
+            pixmap = QPixmap()
+            pixmap.loadFromData(buf.getvalue(), 'png')
+            self.visualization_label.setPixmap(pixmap.scaled(self.visualization_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            
+            plt.close(fig) # close the figure to free up memory
+
+            # 4. Provide feedback and show continue button
+            self.provide_feedback()
+
+        except Exception as e:
+            print(f"An error occurred during analysis: {e}")
+            self.feedback_label.setText("An error occurred during analysis.")
+            self.continue_button.show()
+
+    def extract_pitch(self, audio_file):
+        try:
+            # Use soundfile to read the audio data first, then pass to parselmouth
+            data, samplerate = sf.read(audio_file)
+
+            # Convert to mono if the audio is stereo
+            if data.ndim > 1:
+                data = data.mean(axis=1)
+
+            sound = parselmouth.Sound(data, sampling_frequency=samplerate)
+            
+            # Using to_pitch_ac to get a Pitch object
+            # These parameters might need tuning for better accuracy
+            pitch = sound.to_pitch_ac(
+                time_step=0.01, 
+                pitch_floor=75.0, 
+                pitch_ceiling=600.0
+            )
+            return pitch
+        except Exception as e:
+            print(f"Could not extract pitch from {audio_file}: {e}")
+            return None
+
+    def next_trial(self):
+        self.continue_button.hide()
+        self.visualization_label.clear()
+        self.feedback_label.clear()
+        QTimer.singleShot(500, self.play_sound)
+
 
 
     def start_countdown(self, seconds, recording):
@@ -356,11 +457,12 @@ class TrainingPage(QWidget):
             )
 
         elif self.training_type == "Production Training":
-            # TODO: Implement actual comparison feedback
-            self.feedback_label.setText("Feedback: Good attempt! Try to match the pitch more closely.")
+            self.feedback_label.setText("Compare your pitch with the original.")
+            self.continue_button.show()
 
         # Hide feedback and enable buttons before moving to the next audio file
-        QTimer.singleShot(1500, self.clear_feedback_enable_buttons)
+        else:
+            QTimer.singleShot(1500, self.clear_feedback_enable_buttons)
 
     def clear_feedback_enable_buttons(self):
         self.feedback_label.clear()
@@ -368,10 +470,12 @@ class TrainingPage(QWidget):
             for button in self.response_buttons:
                 button.setStyleSheet("")  # remove highlight
                 button.setEnabled(False)  # disable buttons until next sound is played
+        
         # Only call play_sound if a break is NOT about to start
         if not (self.played_audio_cnt % 20 == 0 and self.played_audio_cnt > 0 and self.sounds):
             QTimer.singleShot(1000, self.play_sound)
-            self.prompt_label.setText("Listen to the sound") 
+            if self.training_type != "Production Training":
+                self.prompt_label.setText("Listen to the sound") 
         else:
             self.takeBreak() 
 

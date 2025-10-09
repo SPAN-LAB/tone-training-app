@@ -38,10 +38,11 @@ class MainWindow(QMainWindow):
         self.volume_check_page.volume_check_complete.connect(self.start_training_after_volume_check)
         self.showMaximized()  # Start maximized
 
-    def start_training(self, participant_id, training_type, sounds, device_id):
+    def start_training(self, participant_id, training_type, sounds, device_id, input_device_id=None):
         # Set up training session in the training page with all necessary parameters
-        self.training_page.setup_training(participant_id, training_type, sounds, device_id)
-        
+        # Accept optional input_device_id to support production training
+        self.training_page.setup_training(participant_id, training_type, sounds, device_id, input_device_id)
+
         # Switch to the training page
         self.stacked_widget.setCurrentWidget(self.training_page)
 
@@ -61,4 +62,6 @@ class MainWindow(QMainWindow):
 
     def start_training_after_volume_check(self):
         # Once volume check is complete, proceed to training
-        self.start_training(self.start_page.participant_id, self.start_page.training_type, self.start_page.sounds, self.start_page.output_device_id)
+        # Pass the checked input device id from the volume check page to training
+        input_id = getattr(self.volume_check_page, 'input_device_id', None)
+        self.start_training(self.start_page.participant_id, self.start_page.training_type, self.start_page.sounds, self.start_page.output_device_id, input_id)
