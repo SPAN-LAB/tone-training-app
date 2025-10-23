@@ -12,6 +12,15 @@ ENV/
 .vscode/
 .idea/
 
+#Audio Files
+*.mp3
+*.WAV
+*.wav
+*.MP3
+
+# IGNORE THE MODEL FOR NOW
+model_training/
+
 # Operating system files
 .DS_Store
 Thumbs.db
