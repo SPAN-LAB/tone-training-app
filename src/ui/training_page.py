@@ -227,6 +227,14 @@ class TrainingPage(QWidget):
         # The break logic is now handled in clear_feedback_enable_buttons
 
         if self.sounds:
+            if self.consecutiveTimesSolution >= 3:
+                print("shuffled sound list because of consecutive solutions")
+                random.shuffle(self.sounds)
+                random.shuffle(self.sounds)
+                random.shuffle(self.sounds)
+            print("Consecuvtiove Solutions: ", self.consecutiveTimesSolution)
+            random.shuffle(self.sounds)
+            print("shuffled list once")
             self.current_sound = self.sounds.pop(0)
             self.played_audio_cnt += 1  # increment count of played audio file
 
@@ -234,7 +242,7 @@ class TrainingPage(QWidget):
                 if self.response_buttons is not None:
                     for button in self.response_buttons:
                         button.setEnabled(False)
-                    self.feedback_label.clear()
+                self.feedback_label.clear()
 
                 # --- MODIFIED: Replaced hardcoded R:\ path with logic from training_page1.py ---
                 # Assumes self.current_sound is a full file path provided during setup.
@@ -271,6 +279,7 @@ class TrainingPage(QWidget):
                     self.toggle_recording()
                 else:
                     self.prompt_label.setText("Select the sound you heard")
+                    time.sleep(2)
                     if self.response_buttons is not None:
                         for button in self.response_buttons:
                             button.setEnabled(True)
@@ -377,7 +386,11 @@ class TrainingPage(QWidget):
         is_correct = response == correct_answer
         if is_correct:
             self.correct_answers += 1
-
+            if(correct_answer == self.previousAnswer):
+                self.consecutiveTimesSolution
+            else:
+                self.consecutiveTimesSolution = 0
+        self.previousAnswer = correct_answer
         # display feedback on screen 
         self.provide_feedback(is_correct, correct_answer)
 
