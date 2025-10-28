@@ -110,6 +110,7 @@ class StartPage(QWidget):
         self.audio_input_device_label = QLabel("Select Audio Input Device:")
         self.audio_input_device_combo = QComboBox()
         self.populate_input_devices()
+        
         input_device_layout.addWidget(self.audio_input_device_label)
         input_device_layout.addWidget(self.audio_input_device_combo)
         
