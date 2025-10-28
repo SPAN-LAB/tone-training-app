@@ -3,7 +3,7 @@ name: Build Plasticity Training App
 on:
   push:
     branches:
-      - main
+      - develop
 
 jobs:
   build:
@@ -13,9 +13,13 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: List Repository Files
-        run: |
-          ls -R
+      # - name: List Repository Files
+      #   run: |
+      #     ls -R
+
+      # - name: Clean Previous Builds
+      #   run: |
+      #     rm -rf build dist *.spec
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -26,16 +30,16 @@ jobs:
         run: |
           pip install pyinstaller PyQt5 sounddevice soundfile numpy cffi pycparser pandas
 
-      - name: Generate Version Info
-        run: |
-          python generate_version_info.py
+      # - name: Generate Version Info
+      #   run: |
+      #     python generate_version_info.py
 
       - name: Build Executable
         run: |
-          pyinstaller --onefile --windowed --version-file=version_info.txt --add-data "src/ui;src/ui" --add-data "src/training;src/training" src/main.py
+          pyinstaller --onefile --windowed --hidden-import sounddevice --hidden-import soundfile --hidden-import pandas --add-data "src/ui:ui" --add-data "src/training:training" src/main.py
 
       - name: Upload Executable to Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Plasticity-Training
-          path: dist/plasticity_training.exe
+          path: dist/main.exe # don't change this name
