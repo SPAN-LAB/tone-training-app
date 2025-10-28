@@ -40,6 +40,8 @@ class TrainingPage(QWidget):
         super().__init__(parent)
         self.current_sound = None
         self.sounds = []
+        self.generalization_sounds = []
+        self.is_generalization_block = False
         self.participant_id = ""
         self.training_type = ""
         self.audio_device_id = None
@@ -137,7 +139,7 @@ class TrainingPage(QWidget):
         self.feedback_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.feedback_label)
 
-    def setup_training(self, participant_id, training_type, sounds, output_device_id, input_device_id, session_num, production_recording_path, response_file_path, session_tracking_file_path, gender): 
+    def setup_training(self, participant_id, training_type, sounds, generalization_sounds, output_device_id, input_device_id, session_num, production_recording_path, response_file_path, session_tracking_file_path, gender): 
         """
         Initialize and configure the training session.
 
@@ -164,6 +166,8 @@ class TrainingPage(QWidget):
         self.participant_id = participant_id
         self.training_type = training_type
         self.sounds = sounds
+        self.generalization_sounds = generalization_sounds
+        self.is_generalization_block = False
         self.audio_device_id = output_device_id  
         self.input_device_id = input_device_id  
         self.correct_answers = 0
@@ -222,8 +226,39 @@ class TrainingPage(QWidget):
         print("production recording path: ", self.production_recording_path)
         print("response file path: ", self.response_file_path)
         print("session tracking file path: ", self.session_tracking_file_path)
+        
+        if self.sounds: # --- Check if TRAINING sounds are left ---
+            self.current_sound = self.sounds.pop(0)
+            self.played_audio_cnt += 1  
+        # ... (rest of the 'try/except' block for playing sound) ...
 
-        # --- MODIFIED: Removed broken break logic from here ---
+        elif self.generalization_sounds and not self.is_generalization_block:
+            # --- Training is done, START Generalization Block ---
+            self.is_generalization_block = True
+
+            # Swap the main 'sounds' list with the generalization list
+            self.sounds = self.generalization_sounds
+            self.generalization_sounds = [] # Clear the old one to prevent loops
+
+            # Shuffle the new generalization sounds
+            random.shuffle(self.sounds)
+
+            # Reset break counter
+            self.played_audio_cnt = 0
+
+            # Notify the user
+            self.prompt_label.setText("Starting Generalization Block...")
+            self.feedback_label.setText("You will not receive feedback.")
+            if self.response_buttons:
+                self.disable_response_button()
+
+            # Pause, then start the first generalization sound
+            QTimer.singleShot(3000, self.play_sound) 
+
+        else:
+            # --- All sounds (training AND generalization) are done ---
+            self.finish_training()
+
         # The break logic is now handled in clear_feedback_enable_buttons
 
         if self.sounds:
@@ -386,6 +421,13 @@ class TrainingPage(QWidget):
                             reaction_time, response=response, solution=correct_answer)
 
     def provide_feedback(self, is_correct=None, correct_answer=None):
+        
+        if self.is_generalization_block:
+            self.feedback_label.setText("Response recorded.")
+            # Timer to clear message and move to next sound
+            QTimer.singleShot(1500, self.clear_feedback_enable_buttons)
+            return # <--- IMPORTANT: exit before giving other feedback
+    
         """
         Display feedback to the participant based on their response.
         ... (rest of docstring) ...
@@ -597,12 +639,14 @@ class TrainingPage(QWidget):
         Log participant responses and session statistics to CSV files.
         ... (rest of docstring) ...
         """
+        block_type = "Generalization" if self.is_generalization_block else "Training"
+        
         # Write training response file
         with open(self.response_file_path, mode="a", newline="") as csv_file:
             csv_writer = csv.writer(csv_file)
 
             if self.training_type != "Production Training":
-                csv_writer.writerow([datetime.date.today(), audio_file, response, solution, round(reaction_time, 4)])
+                csv_writer.writerow([datetime.date.today(), audio_file, response, solution, round(reaction_time, 4), block_type])
             else:
                 # Record predicted tone (response), target tone (solution), production accuracy
                 # Target tone parsed from filename; predicted tone comes from self.production_response
@@ -611,7 +655,7 @@ class TrainingPage(QWidget):
                 except Exception:
                     target_tone = solution if solution else 0
 
-                csv_writer.writerow([datetime.date.today(), audio_file, self.production_response, target_tone, self.production_accuracy, round(reaction_time, 4)])
+                csv_writer.writerow([datetime.date.today(), audio_file, self.production_response, target_tone, self.production_accuracy, round(reaction_time, 4), block_type])
 
         # Write session tracking file 
         if len(self.sounds) == 0:

@@ -48,12 +48,13 @@ class MainWindow(QMainWindow):
         self.training_page.end_training_signal.connect(self.finish_training)
 
 
-    def launch_start_page(self, participant_id, training_type, sounds, output_device_id, input_device_id, session_num, production_recording_path, response_file_path, session_tracking_file_path, gender):
+    def launch_start_page(self, participant_id, training_type, sounds, generalization_sounds,output_device_id, input_device_id, session_num, production_recording_path, response_file_path, session_tracking_file_path, gender):
         # Set up training session in the training page with all necessary parameters
         self.training_page.setup_training(
             participant_id, 
             training_type, 
-            sounds, 
+            sounds,
+            generalization_sounds, 
             output_device_id,
             input_device_id,
             session_num, 

@@ -41,7 +41,8 @@ class StartPage(QWidget):
     # (Signals are unchanged)
     start_training_signal = pyqtSignal(str, 
                                        str, 
-                                       list, 
+                                       list,
+                                       list,
                                        int, 
                                        int,
                                        int, 
@@ -60,6 +61,7 @@ class StartPage(QWidget):
        
         self.sounds_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'resources', 'sounds')
         self.sounds = []
+        self.generalization_sounds = []
 
         self.session_num = 1
         self.response_file_path = ""
@@ -97,7 +99,6 @@ class StartPage(QWidget):
         self.audio_test_button = QPushButton("Test Sound")
         self.populate_audio_devices()
         
-        # --- MODIFIED: Removed lambda ---
         self.audio_test_button.clicked.connect(self.playSound)
         
         device_layout.addWidget(self.audio_device_label)
@@ -136,9 +137,12 @@ class StartPage(QWidget):
         main_layout.addItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
         button_layout = QVBoxLayout()
         button_layout.setSpacing(10)
-        self.load_sounds_button = QPushButton("Load Sound Files")
+        self.load_sounds_button = QPushButton("Load Training Sound Files")
         self.load_sounds_button.clicked.connect(self.load_sounds)
         button_layout.addWidget(self.load_sounds_button)
+        self.load_gen_sounds_button = QPushButton("Load Generalization Sound Files")
+        self.load_gen_sounds_button.clicked.connect(self.load_generalization_sounds)
+        button_layout.addWidget(self.load_gen_sounds_button)
         self.start_button = QPushButton("Start Training")
         self.start_button.clicked.connect(self.volume_check)
         button_layout.addWidget(self.start_button)
@@ -168,7 +172,6 @@ class StartPage(QWidget):
             self.audio_input_device_label.hide()
             self.audio_input_device_combo.hide()
 
-    # --- REPLACED: This method now generates a sine wave and uses PlayThread ---
     def playSound(self):
         """ 
         Test sound function. Generates a 1-second 440Hz sine wave
@@ -200,9 +203,7 @@ class StartPage(QWidget):
             self._play_thread.start()
         except Exception as e:
             QMessageBox.warning(self, "Playback Error", f"Unable to play test sound: {e}")
-    # --- End of replacement ---
 
-    # --- REPLACED: This method now stores device ID as data ---
     def populate_audio_devices(self):
         self.audio_device_combo.clear()
         try:
@@ -223,9 +224,7 @@ class StartPage(QWidget):
             except Exception:
                 # Skip devices that cause problems
                 continue
-    # --- End of replacement ---
-       
-    # --- REPLACED: This method now stores device ID as data ---
+
     def populate_input_devices(self):
         self.audio_input_device_combo.clear()
         try:
@@ -244,7 +243,7 @@ class StartPage(QWidget):
                     self.audio_input_device_combo.addItem(device_info, i)
             except Exception:
                 continue
-    # --- End of replacement ---
+
 
     def load_sounds(self):
         # (This method is unchanged, but now uses 'self.sounds' correctly)
@@ -253,7 +252,6 @@ class StartPage(QWidget):
             self.sounds = [os.path.join(folder, f) for f in os.listdir(folder) if f.endswith('.mp3')]
             QMessageBox.information(self, "Sounds Loaded", f"Loaded {len(self.sounds)} sound files.")
 
-    # --- MODIFIED: This method now reads device ID from .currentData() ---
     def volume_check(self):
         self.participant_id = self.participant_id_input.text()
         self.training_type = self.training_type_combo.currentText()
@@ -287,7 +285,12 @@ class StartPage(QWidget):
         # We pass the input_device_id, which might be None if not production training,
         # but volume_check_page is only triggered if it's not None.
         self.volume_check_signal.emit(self.input_device_id)
-    # --- End of modification ---
+
+    def load_generalization_sounds(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select Folder Containing Generalization Sound Files", self.sounds_dir)
+        if folder:
+            self.generalization_sounds = [os.path.join(folder, f) for f in os.listdir(folder) if f.endswith('.mp3')]
+            QMessageBox.information(self, "Sounds Loaded", f"Loaded {len(self.generalization_sounds)} generalization sound files.")
 
     def after_volume_check_complete(self):
         # (Unchanged)
@@ -302,6 +305,7 @@ class StartPage(QWidget):
             self.participant_id,
             self.training_type,
             self.sounds,
+            self.generalization_sounds,
             self.output_device_id,
             self.input_device_id,
             self.session_num,
@@ -336,9 +340,9 @@ class StartPage(QWidget):
         with open(self.response_file_path, mode="w", newline="") as csv_file:
             csv_writer = csv.writer(csv_file)
             if training != "Production Training":
-                csv_writer.writerow(["date", "audio_file", "response", "solution", "reaction_time"])
+                csv_writer.writerow(["date", "audio_file", "response", "solution", "reaction_time", "block_type"])
             else:
-                csv_writer.writerow(["date", "audio_file", "response", "solution", "accuracy", "reaction_time"])
+                csv_writer.writerow(["date", "audio_file", "response", "solution", "accuracy", "reaction_time", "block_type"])
         
         session_tracking_folder = os.path.join(training_folder, "session_tracking")
         os.makedirs(session_tracking_folder, exist_ok=True)
