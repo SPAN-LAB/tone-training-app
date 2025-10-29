@@ -12,31 +12,31 @@ def load_csv_data(csv_file):
 
 def select_evenly_distributed_trials(data, num_per_syllable_tone=6):
     # Group trials by syllable and tone
-    grouped_data = defaultdict(lambda: {'male': [], 'female': []})
+    grouped_data = defaultdict(list)
     
     # Organize data by syllable-tone and gender
     for trial in data:
         syllable = trial['syllable']
         tone = trial['tone']
-        gender = trial['gender'].lower()  # Normalize gender to lowercase
+        #gender = trial['gender'].lower()  # Normalize gender to lowercase
         group_key = f"{syllable}_tone{tone}"
-        if gender in grouped_data[group_key]:
-            grouped_data[group_key][gender].append(trial)
+        #if gender in grouped_data[group_key]:
+        grouped_data[group_key].append(trial)
 
     # Create an evenly distributed sample of trials
     selected_trials = []
     
-    for group_key, speakers in grouped_data.items():
-        male_speakers = speakers['male']
-        female_speakers = speakers['female']
+    for group_key, trials_list in grouped_data.items():
+        #male_speakers = speakers['male']
+        #female_speakers = speakers['female']
         
         # Check if we have enough speakers in each category
-        if len(male_speakers) < num_per_syllable_tone // 2 or len(female_speakers) < num_per_syllable_tone // 2:
+        if len(trials_list) < num_per_syllable_tone: 
             raise ValueError(f"Not enough speakers for {group_key}")
         
         # Randomly select an equal number of male and female speakers
-        selected_trials.extend(random.sample(male_speakers, num_per_syllable_tone // 2))
-        selected_trials.extend(random.sample(female_speakers, num_per_syllable_tone // 2))
+        selected_trials.extend(random.sample(trials_list, num_per_syllable_tone))
+        #selected_trials.extend(random.sample(female_speakers, num_per_syllable_tone // 2))
     
     return selected_trials
 

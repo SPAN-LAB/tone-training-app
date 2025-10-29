@@ -22,7 +22,8 @@ def read_audio_files(folder):
     # directory = os.path.join("Volumes", "gurindapalli", "projects", "Plasticity_training", "tones", folder)
     # directory = os.path.join("tones", folder) # use relative path tones
     # directory = "../tones/tone_perfect" 
-    directory = "W:\projects\Plasticity_training\\tones\\tone_perfect"
+    # /Volumes/gurindapalli/projects/Plasticity_training/tones/tone_perfect
+    directory = "/Volumes/gurindapalli/projects/Plasticity_training/tones/tone_perfect"
 
     print(os.getcwd())
     print("All directories:")
@@ -32,7 +33,7 @@ def read_audio_files(folder):
 
     #randomly choose 8000 audio files
     files = os.listdir(directory)
-    index = random.sample(range(len(files)), 8000)
+    index = random.sample(range(len(files)), 9000)
 
     mp3_files = [files[i] for i in index if files[i].endswith('.mp3')]
     
@@ -98,7 +99,9 @@ def main():
 
     #randomly choose 8000 audio files
     folder = "tone_perfect"
+    
     features, labels = read_audio_files(folder)
+    print("files read")
 
     # Parameters for the autoencoder
     windowSize = 10
