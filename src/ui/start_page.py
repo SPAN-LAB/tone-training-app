@@ -276,6 +276,11 @@ class StartPage(QWidget):
         if self.output_device_id is None:
             QMessageBox.warning(self, "Missing Information", "Please select an audio output device for training.")
             return
+
+        # If not Production Training, skip volume check and go straight to training
+        if self.training_type != "Production Training":
+            self.start_training()
+            return
             
         # Check for input device ONLY if production training is selected
         if self.training_type == "Production Training" and self.input_device_id is None:
