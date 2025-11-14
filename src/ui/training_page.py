@@ -2,6 +2,8 @@ import sys
 import os, re, csv, random, datetime, time
 from io import BytesIO
 
+from .audio_playback_thread import PlayThread
+
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QErrorMessage
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QKeyEvent, QFont, QImage, QPixmap
@@ -59,10 +61,13 @@ class TrainingPage(QWidget):
         self.sessions_plot = None
         self.preset = None
         self.gender = 0 # Male
+        self.consecutiveTimesSolution = 0  # Counter for consecutive correct answers
 
         self.production_recording_path = ""  # Folder path to store users' recordings for production training
         self.response_file_path = ""         # File path to store training response 
         self.session_tracking_file_path = "" # File path to store session tracking
+        
+        self._play_thread = None # Attribute to hold the playback thread
 
         self.production_recording_file = ""  # File path to store users' recording for production training
 
@@ -72,10 +77,6 @@ class TrainingPage(QWidget):
         # --- Features from training_page1.py ---
         # Error message dialog
         self.error_dialog = QErrorMessage(self)
-        # Start Maximized
-        self.showMaximized()
-        # Disable the maximize button
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
         # --- End features from training_page1.py ---
 
 
@@ -267,7 +268,7 @@ class TrainingPage(QWidget):
                 random.shuffle(self.sounds)
                 random.shuffle(self.sounds)
                 random.shuffle(self.sounds)
-            print("Consecuvtiove Solutions: ", self.consecutiveTimesSolution)
+            print("Consecutive Solutions: ", self.consecutiveTimesSolution)
             random.shuffle(self.sounds)
             print("shuffled list once")
             self.current_sound = self.sounds.pop(0)
@@ -299,25 +300,22 @@ class TrainingPage(QWidget):
                 volume_factor = 0.3
                 data *= volume_factor
 
-                # Set the audio device
-                sd.default.device = self.audio_device_id
-
                 # Start timer for reaction time
                 self.start_time = time.time()
 
-                # Play the sound file
-                sd.play(data, fs, blocking=True)  
+                # Stop previous thread if it's still running (good practice)
+                if self._play_thread and self._play_thread.isRunning():
+                    self._play_thread.terminate() # Force stop
+
+                # Play in background thread
+                # Pass data, sample rate, and device ID to the thread
+                self._play_thread = PlayThread(data, fs, device=self.audio_device_id)
                 
-                # Update UI after playback
-                if self.training_type == "Production Training":
-                    self.prompt_label.setText("Try to reproduce the sound")
-                    self.toggle_recording()
-                else:
-                    self.prompt_label.setText("Select the sound you heard")
-                    time.sleep(2)
-                    if self.response_buttons is not None:
-                        for button in self.response_buttons:
-                            button.setEnabled(True)
+                # Connect the thread's finished signal to our new method
+                self._play_thread.finished.connect(self.on_playback_finished)
+                
+                # Start the thread (this is non-blocking)
+                self._play_thread.start()
 
             except FileNotFoundError as fnf_error:
                 print(f"Error: {fnf_error}")
@@ -421,10 +419,12 @@ class TrainingPage(QWidget):
         is_correct = response == correct_answer
         if is_correct:
             self.correct_answers += 1
-            if(correct_answer == self.previousAnswer):
-                self.consecutiveTimesSolution
+            if correct_answer == self.previousAnswer:
+                self.consecutiveTimesSolution += 1
             else:
-                self.consecutiveTimesSolution = 0
+                self.consecutiveTimesSolution = 1
+        else:
+            self.consecutiveTimesSolution = 0
         self.previousAnswer = correct_answer
         # display feedback on screen 
         self.provide_feedback(is_correct, correct_answer)
@@ -488,6 +488,22 @@ class TrainingPage(QWidget):
             QTimer.singleShot(5000, self.clear_feedback_enable_buttons)
         else:
             QTimer.singleShot(1500, self.clear_feedback_enable_buttons)
+            
+    def on_playback_finished(self):
+        """
+        Slot connected to the PlayThread.finished signal.
+        This runs on the main thread after audio playback is complete.
+        """
+        # This logic was moved from the end of the `play_sound` method
+        if self.training_type == "Production Training":
+            self.prompt_label.setText("Try to reproduce the sound")
+            self.toggle_recording()
+        else:
+            self.prompt_label.setText("Select the sound you heard")
+            
+            if self.response_buttons is not None:
+                for button in self.response_buttons:
+                    button.setEnabled(True)
 
     def extract_fundamental_pitch(self, audio):
             """
