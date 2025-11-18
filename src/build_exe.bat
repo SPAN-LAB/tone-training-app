@@ -11,7 +11,7 @@ call venv\Scripts\activate
 REM --- Install Dependencies ---
 echo Installing dependencies...
 pip install --upgrade pip
-pip install pyinstaller PyQt5 sounddevice soundfile numpy pandas matplotlib seaborn
+pip install pyinstaller PyQt5 sounddevice soundfile numpy pandas matplotlib seaborn scipy scikit-learn
 
 REM --- Clean Previous Builds ---
 echo Cleaning previous builds...
@@ -26,6 +26,9 @@ pyinstaller --onefile --windowed ^
     --hidden-import="soundfile" ^
     --hidden-import="pandas" ^
     --hidden-import="seaborn" ^
+    --hidden-import="sklearn" ^
+    --hidden-import="scipy" ^
+    --hidden-import="scipy._cyutility" ^
     main.py
 
 REM --- Deactivate the Virtual Environment ---

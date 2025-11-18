@@ -326,7 +326,11 @@ class StartPage(QWidget):
         # (Unchanged)
         participant_id = self.participant_id
         training = self.training_type
-        participant_folder = os.path.join("participants", participant_id)
+
+        # Use project-relative absolute main_path so all files are written deterministically
+        main_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+        participant_folder = os.path.join(main_path, "participants", participant_id)
         os.makedirs(participant_folder, exist_ok=True)
         training_folder = os.path.join(participant_folder, training)
         os.makedirs(training_folder, exist_ok=True)
@@ -342,6 +346,7 @@ class StartPage(QWidget):
             else:
                 self.session_num = 1 # Default to 1 if no files found
         
+        # Store absolute paths so other modules don't need to join with main_path
         self.response_file_path = os.path.join(response_folder, f"session{self.session_num}.csv")
         with open(self.response_file_path, mode="w", newline="") as csv_file:
             csv_writer = csv.writer(csv_file)
@@ -359,5 +364,5 @@ class StartPage(QWidget):
             session_writer.writerow(["date", "subject", "accuracy"])
         
         if training == "Production Training":
-            self.production_recording_path = os.path.join("participants", participant_id, "Production Recording", f"session{self.session_num}")
+            self.production_recording_path = os.path.join(participant_folder, "Production Recording", f"session{self.session_num}")
             os.makedirs(self.production_recording_path, exist_ok=True) # Added exist_ok=True

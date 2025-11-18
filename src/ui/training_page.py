@@ -62,6 +62,7 @@ class TrainingPage(QWidget):
         self.preset = None
         self.gender = 0 # Male
         self.consecutiveTimesSolution = 0  # Counter for consecutive correct answers
+        self.previousAnswer = None
 
         self.production_recording_path = ""  # Folder path to store users' recordings for production training
         self.response_file_path = ""         # File path to store training response 
@@ -70,6 +71,11 @@ class TrainingPage(QWidget):
         self._play_thread = None # Attribute to hold the playback thread
 
         self.production_recording_file = ""  # File path to store users' recording for production training
+
+        # Background play thread handle
+        self._play_thread = None
+        # Counter for rows successfully written to the response CSV during the session
+        self.response_rows_written = 0
 
         # Set focus policy to accept keyboard focus
         self.setFocusPolicy(Qt.StrongFocus)
@@ -177,6 +183,11 @@ class TrainingPage(QWidget):
         self.response_file_path = response_file_path
         self.session_tracking_file_path = session_tracking_file_path
         self.gender = gender
+        # Keep track of expected total number of stimuli (training + generalization)
+        try:
+            self.total_expected_sounds = len(sounds) + len(generalization_sounds)
+        except Exception:
+            self.total_expected_sounds = None
 
         if production_recording_path:
             self.production_recording_path = production_recording_path
@@ -206,6 +217,7 @@ class TrainingPage(QWidget):
         if self.response_buttons is not None:
                 for button in self.response_buttons:
                     button.setEnabled(False)
+        # response_locked removed: disabling buttons is sufficient to prevent input
     
     def takeBreak(self):
         """Initiates the 30-second break."""
@@ -227,10 +239,11 @@ class TrainingPage(QWidget):
         print("production recording path: ", self.production_recording_path)
         print("response file path: ", self.response_file_path)
         print("session tracking file path: ", self.session_tracking_file_path)
+        print("total expected sounds (training + generalization):", getattr(self, "total_expected_sounds", None))
         
         if self.sounds: # --- Check if TRAINING sounds are left ---
-            self.current_sound = self.sounds.pop(0)
-            self.played_audio_cnt += 1  
+            # Do not pop here; popping is handled once later to avoid skipping items.
+            pass
         # ... (rest of the 'try/except' block for playing sound) ...
 
         elif self.generalization_sounds and not self.is_generalization_block:
@@ -244,6 +257,8 @@ class TrainingPage(QWidget):
             # Shuffle the new generalization sounds
             random.shuffle(self.sounds)
 
+            print(f"Starting generalization block: total generalization sounds moved = {len(self.sounds)}")
+
             # Reset break counter
             self.played_audio_cnt = 0
 
@@ -254,7 +269,8 @@ class TrainingPage(QWidget):
                 self.disable_response_button()
 
             # Pause, then start the first generalization sound
-            QTimer.singleShot(3000, self.play_sound) 
+            QTimer.singleShot(3000, self.play_sound)
+            return
 
         else:
             # --- All sounds (training AND generalization) are done ---
@@ -273,6 +289,7 @@ class TrainingPage(QWidget):
             print("shuffled list once")
             self.current_sound = self.sounds.pop(0)
             self.played_audio_cnt += 1  # increment count of played audio file
+            print(f"Selected sound: {self.current_sound} (remaining sounds: {len(self.sounds)})")
 
             try:    
                 if self.response_buttons is not None:
@@ -301,20 +318,29 @@ class TrainingPage(QWidget):
                 data *= volume_factor
 
                 # Start timer for reaction time
-                self.start_time = time.time()
+                # Do not set start_time here for perception — set it when playback finishes
+                # For production training, start_time will be set when recording starts
 
-                # Stop previous thread if it's still running (good practice)
+                # Stop previous thread if it's still running (best-effort)
                 if self._play_thread and self._play_thread.isRunning():
-                    self._play_thread.terminate() # Force stop
+                    try:
+                        # Attempt a polite stop first
+                        sd.stop()
+                        self._play_thread.wait(100)
+                    except Exception:
+                        try:
+                            self._play_thread.terminate()
+                        except Exception:
+                            pass
 
-                # Play in background thread
-                # Pass data, sample rate, and device ID to the thread
+                # Play in background thread: pass data, sample rate, and device ID to the thread
                 self._play_thread = PlayThread(data, fs, device=self.audio_device_id)
-                
-                # Connect the thread's finished signal to our new method
+
+                # Connect the thread's finished signal to our handler
                 self._play_thread.finished.connect(self.on_playback_finished)
-                
-                # Start the thread (this is non-blocking)
+
+                # Start the thread (non-blocking)
+                print(f"Playing audio: {os.path.basename(full_path)}")
                 self._play_thread.start()
 
             except FileNotFoundError as fnf_error:
@@ -349,8 +375,10 @@ class TrainingPage(QWidget):
         sd.default.device = (self.input_device_id, self.audio_device_id)  
 
         # Start recording and countdown timer
+        # Record start time for reaction-time calculation at the moment recording begins
+        self.start_time = time.time()
         self.recording = sd.rec(int(3 * 44100), samplerate=44100, channels=1)
-        self.start_countdown(3, recording=True) 
+        self.start_countdown(3, recording=True)
 
     def stop_recording(self):
         self.is_recording = False
@@ -398,13 +426,15 @@ class TrainingPage(QWidget):
             else:
                 # This is the crucial part for the break timer
                 self.prompt_label.setText("Listen to the sound")
-                if self.response_buttons is not None:
-                    for button in self.response_buttons:
-                        button.setEnabled(True)
+                # Do not enable buttons here; keep them disabled until playback finishes.
                 QTimer.singleShot(1000, self.play_sound) # Restart playing
     # --- End modification ---
 
     def process_response(self, response):
+        # Guard: if no current sound is set, ignore spurious responses
+        if not self.current_sound:
+            print("Warning: process_response called but no current sound is active. Ignoring response.")
+            return
 
         # Disable response buttons after selection
         if self.response_buttons is not None:
@@ -497,10 +527,13 @@ class TrainingPage(QWidget):
         # This logic was moved from the end of the `play_sound` method
         if self.training_type == "Production Training":
             self.prompt_label.setText("Try to reproduce the sound")
+            # For production, start recording — start_recording() will set start_time
             self.toggle_recording()
         else:
+            # For perception, mark start_time when playback finished so reaction_time is accurate
+            self.start_time = time.time()
             self.prompt_label.setText("Select the sound you heard")
-            
+
             if self.response_buttons is not None:
                 for button in self.response_buttons:
                     button.setEnabled(True)
@@ -654,7 +687,8 @@ class TrainingPage(QWidget):
         if self.response_buttons is not None:
             for button in self.response_buttons:
                 button.setStyleSheet("")  # remove highlight
-                button.setEnabled(True)
+                # keep buttons disabled here; they will be enabled when the next playback finishes
+                button.setEnabled(False)
         
         # Check if a break is due
         if not (self.played_audio_cnt % 20 == 0 and self.played_audio_cnt > 0 and self.sounds):
@@ -671,11 +705,25 @@ class TrainingPage(QWidget):
         block_type = "Generalization" if self.is_generalization_block else "Training"
         
         # Write training response file
-        with open(self.response_file_path, mode="a", newline="") as csv_file:
+        # Use absolute path for writes as well (make path relative to project root if necessary)
+        response_write_path = self.response_file_path
+        try:
+            # If path is relative, join with main_path
+            if not os.path.isabs(response_write_path):
+                response_write_path = os.path.join(main_path, response_write_path)
+        except Exception:
+            response_write_path = self.response_file_path
+
+        with open(response_write_path, mode="a", newline="") as csv_file:
             csv_writer = csv.writer(csv_file)
 
             if self.training_type != "Production Training":
                 csv_writer.writerow([datetime.date.today(), audio_file, response, solution, round(reaction_time, 4), block_type])
+                print(f"WROTE ROW -> {audio_file}, response={response}, solution={solution}, rt={round(reaction_time,4)}, type={block_type}")
+                try:
+                    self.response_rows_written += 1
+                except Exception:
+                    pass
             else:
                 # Record predicted tone (response), target tone (solution), production accuracy
                 # Target tone parsed from filename; predicted tone comes from self.production_response
@@ -685,23 +733,29 @@ class TrainingPage(QWidget):
                     target_tone = solution if solution else 0
 
                 csv_writer.writerow([datetime.date.today(), audio_file, self.production_response, target_tone, self.production_accuracy, round(reaction_time, 4), block_type])
+                print(f"WROTE ROW -> {audio_file}, production_response={self.production_response}, target={target_tone}, accuracy={self.production_accuracy}, rt={round(reaction_time,4)}, type={block_type}")
+                try:
+                    self.response_rows_written += 1
+                except Exception:
+                    pass
 
-        # Write session tracking file 
-        if len(self.sounds) == 0:
+        # Write session tracking file only when all stimuli (training + generalization) have been played
+        if (not self.sounds) and (not self.generalization_sounds):
 
             # Open the training file in append mode and write session data
             with open(self.session_tracking_file_path, mode="a", newline="") as session_file:
                 session_writer = csv.writer(session_file)
 
-                # Read response file into DataFrame
-                df = pd.read_csv(f"{self.response_file_path}")
+                # Read response file into DataFrame (use main_path to get absolute path)
+                response_path = os.path.join(main_path, self.response_file_path)
+                df = pd.read_csv(response_path)
 
                 # Ensure tone is extracted from audio_file as a string key '1'..'4'
                 df["tone"] = df["audio_file"].astype(str).str.extract(r"(\d+)")
 
                 if self.training_type == "Production Training":
                     # For production: use the recorded probability/accuracy directly
-                    df["accuracy"] = pd.to_numeric(df["accuracy"], errors="coerce")
+                    df["accuracy"] = pd.to_numeric(df.get("accuracy", pd.Series()), errors="coerce")
 
                     # Mean accuracy per tone (probabilities averaged)
                     tone_means = {}
@@ -734,8 +788,12 @@ class TrainingPage(QWidget):
 
     def split_block(self, df, files_per_block):
 
-        # Determine response accuracy for perception training
-        df["accuracy"] = df["response"] == df["solution"] if self.training_type != "Production Training" else np.nan
+        # Determine response accuracy per-row: perception -> response==solution, production -> use recorded accuracy column
+        if self.training_type == "Production Training":
+            # Ensure numeric accuracy column exists and is numeric
+            df["accuracy"] = pd.to_numeric(df.get("accuracy", pd.Series(index=df.index)), errors="coerce")
+        else:
+            df["accuracy"] = (df["response"] == df["solution"]).astype(float)
 
         # Assign block numbers
         df["block"] = (df.index // files_per_block).astype(int) + 1
@@ -757,24 +815,66 @@ class TrainingPage(QWidget):
 
         global main_path
 
-        # read csv files
-        file = os.path.join(main_path, self.response_file_path)
+        # read csv files (use absolute path stored in response_file_path)
+        file = self.response_file_path if os.path.isabs(self.response_file_path) else os.path.join(main_path, self.response_file_path)
         df = pd.read_csv(file)
 
-        # split the session into blocks
-        df = self.split_block(df, 10)
+        # Ensure rows are in play order then assign block numbers (20 sounds per block)
+        df = df.reset_index(drop=True)
+        files_per_block = 20
+        df["block"] = (df.index // files_per_block).astype(int) + 1
 
-        # plot
-        fig, ax = plt.subplots(1, 1, figsize=(4, 4))
-        sns.lineplot(df, x="block", y="accuracy_mean", marker="o", ax=ax)
-        
-        # customize plot settings
-        xlimit = df["block"].unique()[-1]
-        ax.set(xticks=[(i + 1) * 2 for i in range(xlimit // 2)], yticks=[0, 20, 40, 60, 80, 100],
-                xlim=(0, xlimit+1), ylim=(0, 105))
+        # Compute per-row accuracy depending on training type
+        if self.training_type == "Production Training":
+            df["accuracy"] = pd.to_numeric(df.get("accuracy", pd.Series(dtype=float)), errors="coerce")
+        else:
+            df["accuracy"] = (df["response"] == df["solution"]).astype(float)
+
+        # Aggregate mean accuracy per block and sort by block number
+        block_means = df.groupby("block", sort=True)["accuracy"].mean().reset_index()
+        block_means["accuracy_pct"] = (block_means["accuracy"] * 100).round(2)
+
+        # Determine which blocks contain generalization trials (if block_type column exists)
+        gen_blocks = []
+        if "block_type" in df.columns:
+            gen_blocks = sorted(df.loc[df["block_type"] == "Generalization", "block"].unique().tolist())
+
+        # plot block means in ascending block order
+        fig, ax = plt.subplots(1, 1, figsize=(6, 4))
+        ax.plot(block_means["block"], block_means["accuracy_pct"], marker="o", color="#1f77b4")
+
+        # Determine xticks and x limits (based on available blocks)
+        xticks = list(block_means["block"]) if not block_means.empty else [1]
+        xlimit = int(block_means["block"].max()) if not block_means.empty else 1
+
+        # Shade generalization blocks for visibility
+        for b in gen_blocks:
+            ax.axvspan(b - 0.5, b + 0.5, color="#d3d3d3", alpha=0.4)
+
+        # Also shade blocks 3 and 4 as requested (if they exist in the plotted blocks)
+        mid_blocks = [b for b in [3, 4] if b in xticks]
+        for b in mid_blocks:
+            ax.axvspan(b - 0.5, b + 0.5, color="#cfe2f3", alpha=0.35)
+        ax.set_xticks(xticks)
+        ax.set_xticklabels([f"Block {int(x)}" for x in xticks])
+        ax.set_yticks([0, 20, 40, 60, 80, 100])
+        ax.set_xlim(0.5, xlimit + 0.5)
+        ax.set_ylim(0, 105)
         ax.set_xlabel("Block")
         ax.set_ylabel("Accuracy(%)")
         ax.set_title("Participant: " + self.participant_id)
+
+        # Add legend entries explaining shaded areas
+        import matplotlib.patches as mpatches
+        legend_handles = []
+        if gen_blocks:
+            shaded_patch = mpatches.Patch(facecolor="#d3d3d3", alpha=0.4, label="Generalization block")
+            legend_handles.append(shaded_patch)
+        if mid_blocks:
+            mid_patch = mpatches.Patch(facecolor="#cfe2f3", alpha=0.35, label="Blocks 3-4")
+            legend_handles.append(mid_patch)
+        if legend_handles:
+            ax.legend(handles=legend_handles, loc="upper left", bbox_to_anchor=(1, 1))
 
         self.blocks_plot = fig
     
@@ -809,11 +909,19 @@ class TrainingPage(QWidget):
                     palette=sns.color_palette("Set1", 5), ax=ax)
 
         # adjust line attribute to make overall accuracy stand out
-        for line_obj, label in zip(ax.lines, ax.get_legend().texts):
-                if label.get_text() != "overall":  
-                        line_obj.set_alpha(0.5)
+        legend = ax.get_legend()
+        if legend is not None:
+            # Safe iteration: pair plotted line objects with legend text labels
+            legend_texts = legend.get_texts()
+            for line_obj, label in zip(ax.lines, legend_texts):
+                if label.get_text() != "overall":
+                    line_obj.set_alpha(0.5)
                 else:
-                        line_obj.set_linewidth(3)
+                    line_obj.set_linewidth(3)
+        else:
+            # No legend (e.g., single series); make the single line stand out
+            for line_obj in ax.lines:
+                line_obj.set_linewidth(2.5)
 
         # set axis ticks
         xlimit = df["session"].unique()[-1]
@@ -837,6 +945,12 @@ class TrainingPage(QWidget):
         # generate plot
         self.plot_block_accuracy()
         self.plot_session_accuracy()
+
+        # Log number of rows written for this session for debugging
+        try:
+            print(f"Session complete. Response rows written this session: {self.response_rows_written}")
+        except Exception:
+            pass
 
         # --- MODIFIED: Use QErrorMessage dialogs ---
         if self.blocks_plot is None:
