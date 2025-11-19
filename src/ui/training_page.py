@@ -538,44 +538,62 @@ class TrainingPage(QWidget):
                 for button in self.response_buttons:
                     button.setEnabled(True)
 
-    def extract_fundamental_pitch(self, audio):
-            """
-            Extract and normalize the fundamental frequency (f0) contour from an audio file.
-            ... (rest of docstring) ...
-            """
-            try:
-                y, sr = librosa.load(audio)
-            except Exception as e:
-                print(f"Error loading audio file {audio}: {e}")
-                return pd.Series(dtype=np.float64) # Return empty series
+    def extract_fundamental_pitch(self, audio): #CHECK, for production
+        """
+        Extract and normalize the fundamental frequency (f0) contour from an audio file.
+        """
+        try:
+            y, sr = librosa.load(audio, sr=44100)  # Force consistent sample rate
+        except Exception as e:
+            print(f"Error loading audio file {audio}: {e}")
+            return pd.Series(dtype=np.float64)
 
-            # extract f0 (preset 1 (males): 60-200Hz, preset 2 (females): 180-350Hz)
-            if self.preset == 1:
-                fmin, fmax = 60, 200
-            elif self.preset == 2:
-                fmin, fmax = 180, 350
-            else:
-                print(f'Invalid preset value: {self.preset}. Defaulting to 1.')
-                fmin, fmax = 60, 200
+        # Apply some basic audio preprocessing
+        y = librosa.util.normalize(y)  # Normalize audio volume
+        
+        # extract f0 with appropriate preset
+        if self.preset == 1:
+            fmin, fmax = 60, 200
+        elif self.preset == 2:
+            fmin, fmax = 180, 350
+        else:
+            print(f'Invalid preset value: {self.preset}. Defaulting to 1.')
+            fmin, fmax = 60, 200
 
-            f0, _, _ = librosa.pyin(y, fmin=fmin, fmax=fmax, sr=sr)
-            f0 = f0[~np.isnan(f0)]
+        # Use pyin with better parameters for speech
+        f0, voiced_flag, voiced_probs = librosa.pyin(
+            y, 
+            fmin=fmin, 
+            fmax=fmax, 
+            sr=sr,
+            frame_length=2048,  # Better for speech
+            hop_length=512,
+            fill_na=0.0  # Fill unvoiced frames with 0
+        )
+        
+        # Replace NaN values with 0
+        f0 = np.nan_to_num(f0, nan=0.0)
+        
+        # Only use voiced frames for normalization (non-zero values)
+        voiced_f0 = f0[f0 > 0]
+        
+        if len(voiced_f0) == 0:
+            print(f"Warning: No valid voiced frames detected in {audio}")
+            return pd.Series(dtype=np.float64)
 
-            if len(f0) == 0:
-                print(f"Warning: No valid f0 detected in {audio}")
-                return pd.Series(dtype=np.float64) # Return empty series
+        # min-max normalization using only voiced frames
+        f0_min = voiced_f0.min()
+        f0_max = voiced_f0.max()
+        
+        if f0_max == f0_min:
+            # If all pitches are the same, return zeros
+            normalized_f0 = np.zeros_like(f0)
+        else:
+            # Apply normalization to entire f0 array (including unvoiced=0)
+            normalized_f0 = np.where(f0 > 0, (f0 - f0_min) / (f0_max - f0_min), 0.0)
 
-            # min-max normalization
-            f0_min = f0.min()
-            f0_max = f0.max()
-            if f0_max == f0_min:
-                # Avoid division by zero if pitch is constant
-                f0 = np.zeros_like(f0)
-            else:
-                f0 = (f0 - f0_min) / (f0_max - f0_min)
-
-            times = librosa.times_like(f0, sr=sr)
-            return pd.Series(f0, index=times)      
+        times = librosa.times_like(f0, sr=sr, hop_length=512)
+        return pd.Series(normalized_f0, index=times) 
 
     def range_est(self, audio):
         """
@@ -639,7 +657,7 @@ class TrainingPage(QWidget):
 
         # --- Load model using corrected path (Ensure main_path is fixed too!) ---
         # Make sure main_path definition at the top of the file is corrected first!
-        model_path = os.path.join(main_path, 'model_training', 'tone_prediction_model.pkl')
+        model_path = os.path.join(main_path, 'model_training', 'tone_pred_model.pkl')
         model = load_tone_model(model_path)
         if isinstance(model, tuple): # Handle if load_tone_model returns tuple
             model = model[0]
