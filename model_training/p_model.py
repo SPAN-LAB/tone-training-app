@@ -74,7 +74,7 @@ def read_audio_files_yin(folder, samples_per_class=2250):
 
     for f in selected_files:
         path = os.path.join(directory, f)
-        print("Loading:", path, "Size:", os.path.getsize(path))
+        #print("Loading:", path, "Size:", os.path.getsize(path))
         audio, sr = librosa.load(os.path.join(directory, f), sr=None, mono=True)
 
         # Extract pitch contour

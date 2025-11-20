@@ -10,7 +10,7 @@ from PyQt5.QtGui import QKeyEvent, QFont, QImage, QPixmap
 
 import joblib
 import sounddevice as sd
-import soundfile as sfp
+import soundfile as sf
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns # TODO: Install seaborn when bundle executable
@@ -550,51 +550,24 @@ class TrainingPage(QWidget):
             return pd.Series(dtype=np.float64)
 
         # Apply some basic audio preprocessing
-        y = librosa.util.normalize(y)  # Normalize audio volume
+        y = librosa.util.normalize(y)  # Normalize audio volume #TODO
         
-        # extract f0 with appropriate preset
-        if self.preset == 1:
-            fmin, fmax = 60, 200
-        elif self.preset == 2:
-            fmin, fmax = 180, 350
-        else:
-            print(f'Invalid preset value: {self.preset}. Defaulting to 1.')
-            fmin, fmax = 60, 200
-
-        # Use pyin with better parameters for speech
-        f0, voiced_flag, voiced_probs = librosa.pyin(
+        # Use yin with better parameters for speech
+        f0 = librosa.yin(audio, fmin=60, fmax=400, sr=sr)
+        f0 = librosa.yin(
             y, 
-            fmin=fmin, 
-            fmax=fmax, 
+            fmin=60, 
+            fmax=500, 
             sr=sr,
-            frame_length=2048,  # Better for speech
+            frame_length=2048,  # Match training parameters if possible
             hop_length=512,
-            fill_na=0.0  # Fill unvoiced frames with 0
+            trough_threshold=0.1  # Default YIN parameter
         )
-        
-        # Replace NaN values with 0
-        f0 = np.nan_to_num(f0, nan=0.0)
-        
-        # Only use voiced frames for normalization (non-zero values)
-        voiced_f0 = f0[f0 > 0]
-        
-        if len(voiced_f0) == 0:
-            print(f"Warning: No valid voiced frames detected in {audio}")
-            return pd.Series(dtype=np.float64)
 
-        # min-max normalization using only voiced frames
-        f0_min = voiced_f0.min()
-        f0_max = voiced_f0.max()
+        f0 = np.nan_to_num(f0, nan=0.0)  # handle undefined frames
         
-        if f0_max == f0_min:
-            # If all pitches are the same, return zeros
-            normalized_f0 = np.zeros_like(f0)
-        else:
-            # Apply normalization to entire f0 array (including unvoiced=0)
-            normalized_f0 = np.where(f0 > 0, (f0 - f0_min) / (f0_max - f0_min), 0.0)
-
         times = librosa.times_like(f0, sr=sr, hop_length=512)
-        return pd.Series(normalized_f0, index=times) 
+        return pd.Series(f0, index=times) 
 
     def range_est(self, audio):
         """
@@ -603,7 +576,7 @@ class TrainingPage(QWidget):
         """
         y, sr = librosa.load(audio)
         # Use a wide pitch range to cover both male and female voices
-        f0, _, _ = librosa.pyin(y, fmin=50, fmax=400, sr=sr)
+        f0 = librosa.yin(y, fmin=60, fmax=500, sr=sr)
         f0 = f0[~np.isnan(f0)]
         if len(f0) == 0:
             print("Warning: No valid pitch detected for range estimation. Defaulting to preset 1 (male).")
@@ -615,40 +588,51 @@ class TrainingPage(QWidget):
 
     def tone_evaluation(self):
         """
-        Predict the tone of the most recent production recording using the ML model.
+        Predict the tone using the SAME feature extraction as during training
         """
         audio_path = getattr(self, "production_recording_file", None)
         if not audio_path or not os.path.exists(audio_path):
-            raise FileNotFoundError(f"Recording not found for tone evaluation: {audio_path}")
+            raise FileNotFoundError(f"Recording not found: {audio_path}")
 
-        # Extract and process pitch features
+        # 1. Extract raw pitch values using YIN (no normalization!)
         f0_series = self.extract_fundamental_pitch(audio_path)
         if f0_series is None or len(f0_series) == 0:
-            print("Warning: No valid f0 extracted from recording. Defaulting prediction to 0.")
+            print("Warning: No valid f0 extracted. Defaulting prediction to 0.")
             self.production_response = 0
             return
 
-        f0 = f0_series.values.astype(float)
+        f0 = f0_series.values
 
-        # Resample to 39 pitch points
-        expected_pitch_points = 39
-        if len(f0) == 0:
-            print("Warning: Empty f0 after normalization. Defaulting prediction to 0.")
-            self.production_response = 0 
-            return
-        elif len(f0) == 1:
-            pitch_contour = np.repeat(f0, expected_pitch_points)
+        # 2. Extract the SAME 10 statistical features used in training
+        f0_clean = f0[f0 > 0]  # Remove unvoiced frames (0 values)
+        
+        features = []
+        if len(f0_clean) > 0:
+            # Extract the exact same features as in training
+            features.extend([
+                np.mean(f0_clean),           # Average pitch
+                np.std(f0_clean),            # Pitch variability  
+                np.median(f0_clean),         # Robust central tendency
+                np.max(f0_clean),            # Maximum pitch
+                np.min(f0_clean),            # Minimum pitch
+                np.ptp(f0_clean),            # Pitch range (max - min)
+            ])
+            # Add quartiles (same as training)
+            if len(f0_clean) > 3:
+                features.extend(np.percentile(f0_clean, [25, 50, 75, 90]).tolist())
+            else:
+                features.extend([0, 0, 0, 0])
         else:
-            x_src = np.linspace(0.0, 1.0, num=len(f0))
-            x_tgt = np.linspace(0.0, 1.0, num=expected_pitch_points)
-            pitch_contour = np.interp(x_tgt, x_src, f0)
+            # If no voiced frames, use zeros (same as training)
+            features.extend([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        
+        
+        X = np.array(features, dtype=np.float32).reshape(1, -1)
+        
+        print(f"Extracted features shape: {X.shape}")  # Should be (1, 10)
+        print(f"Features: {features}")
 
-        # Add gender feature
-        gender_feature = np.array([self.gender], dtype=float) 
-        features = np.concatenate((pitch_contour, gender_feature))
-        X = features.reshape(1, -1) 
-
-        # --- SIMPLIFIED: Load and use model ---
+        # 3. Load and predict
         try:
             model_path = os.path.join(main_path, 'model_training', 'tone_pred_model.pkl')
             
@@ -657,13 +641,14 @@ class TrainingPage(QWidget):
                 
             model = joblib.load(model_path)
             
-            # Simple shape check
-            if X.shape[1] != 40:
-                print(f"ERROR: Expected 40 features, got {X.shape[1]}")
+            # Verify feature count matches
+            expected_features = getattr(model, "n_features_in_", 10)
+            if X.shape[1] != expected_features:
+                print(f"ERROR: Model expects {expected_features} features, got {X.shape[1]}")
                 self.production_response = 0
                 return
 
-            # Direct prediction (no complex model introspection needed)
+            # Predict
             if hasattr(model, "predict_proba"):
                 proba = model.predict_proba(X)[0]
                 pred_idx = int(np.argmax(proba))
@@ -675,12 +660,12 @@ class TrainingPage(QWidget):
 
             # Map to tone (1-4)
             self.production_response = pred_idx + 1
-            print(f"Final production response: {self.production_response}")
+            print(f"Final tone prediction: {self.production_response}")
             
         except Exception as e:
             print(f"Error during model prediction: {e}")
             self.production_response = 0
-        
+
     def clear_feedback_enable_buttons(self):
         self.feedback_label.clear()
         if self.response_buttons is not None:
