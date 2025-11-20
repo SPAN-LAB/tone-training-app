@@ -19,7 +19,7 @@ ENV/
 *.MP3
 
 # IGNORE THE MODEL FOR NOW
-model_training/
+#model_training/
 
 # Operating system files
 .DS_Store

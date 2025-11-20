@@ -612,7 +612,6 @@ class TrainingPage(QWidget):
         # 180-200Hz is overlapping zone for male and female voice, take the mean of 180 + 200 = 190Hz
         return 1 if mean_pitch < 190 else 2
 
-    # Replace the entire tone_evaluation method in training_page.py with this:
     def tone_evaluation(self):
         """
         Predict the tone of the most recent production recording using the ML model.
@@ -621,22 +620,18 @@ class TrainingPage(QWidget):
         if not audio_path or not os.path.exists(audio_path):
             raise FileNotFoundError(f"Recording not found for tone evaluation: {audio_path}")
 
-        # 2) obtain min-max normalized f0 
+        # Extract and process pitch features
         f0_series = self.extract_fundamental_pitch(audio_path)
         if f0_series is None or len(f0_series) == 0:
-            # If f0 extraction fails, default to a "wrong" answer (e.g., 0)
             print("Warning: No valid f0 extracted from recording. Defaulting prediction to 0.")
-            self.production_response = 0 # Assign a non-tone value
-            return # Exit the function if no f0
+            self.production_response = 0
+            return
 
         f0 = f0_series.values.astype(float)
 
-        # 39 Target pitch points expected by the model
-        expected_pitch_points = 39 # Match the number of time columns in tone_matrix.csv
-
-        # Resample/pad/trim the normalized f0 pitch contour
+        # Resample to 39 pitch points
+        expected_pitch_points = 39
         if len(f0) == 0:
-            # This case should be caught by the check above, but as a failsafe:
             print("Warning: Empty f0 after normalization. Defaulting prediction to 0.")
             self.production_response = 0 
             return
@@ -647,58 +642,43 @@ class TrainingPage(QWidget):
             x_tgt = np.linspace(0.0, 1.0, num=expected_pitch_points)
             pitch_contour = np.interp(x_tgt, x_src, f0)
 
-        # Ensure gender is a numpy array element for concatenation
+        # Add gender feature
         gender_feature = np.array([self.gender], dtype=float) 
-        # Concatenate the 39 pitch points and the 1 gender feature
         features = np.concatenate((pitch_contour, gender_feature))
-
-        # Reshape to (1, 40) for the model
         X = features.reshape(1, -1) 
 
-        # --- Load model using corrected path (Ensure main_path is fixed too!) ---
-        # Make sure main_path definition at the top of the file is corrected first!
-        model_path = os.path.join(main_path, 'model_training', 'tone_pred_model.pkl')
-        model = load_tone_model(model_path)
-        if isinstance(model, tuple): # Handle if load_tone_model returns tuple
-            model = model[0]
-        # --- End corrected path ---
-
-        # --- Check input shape (Optional but good for debugging) ---
-        # Access the final estimator (SVC) within the pipeline/GridSearchCV
-        final_estimator = model
-        if hasattr(model, 'best_estimator_'): # If it's GridSearchCV
-            if hasattr(model.best_estimator_, 'named_steps') and 'svc' in model.best_estimator_.named_steps: # If it's a Pipeline
-                final_estimator = model.best_estimator_.named_steps['svc']
-            else: # If best_estimator_ is just the SVC
-                final_estimator = model.best_estimator_
-        elif hasattr(model, 'named_steps') and 'svc' in model.named_steps: # If it's just a Pipeline
-            final_estimator = model.named_steps['svc']
-
-        # Get expected features from the final SVC step
-        expected_n_features = getattr(final_estimator, "n_features_in_", 40) 
-
-        if X.shape[1] != expected_n_features:
-            print(f"ERROR: Input feature mismatch: Model expects {expected_n_features}, but got {X.shape[1]}")
-            # Handle error gracefully - default prediction to 0
-            self.production_response = 0
-            return 
-        # --- End shape check ---
-
-        # Predict using the combined features
+        # --- SIMPLIFIED: Load and use model ---
         try:
-            # Use the top-level model object (GridSearchCV or Pipeline) for prediction
+            model_path = os.path.join(main_path, 'model_training', 'tone_pred_model.pkl')
+            
+            if not os.path.exists(model_path):
+                raise FileNotFoundError(f"Model file not found at: {model_path}")
+                
+            model = joblib.load(model_path)
+            
+            # Simple shape check
+            if X.shape[1] != 40:
+                print(f"ERROR: Expected 40 features, got {X.shape[1]}")
+                self.production_response = 0
+                return
+
+            # Direct prediction (no complex model introspection needed)
             if hasattr(model, "predict_proba"):
                 proba = model.predict_proba(X)[0]
                 pred_idx = int(np.argmax(proba))
-            else: # Fallback if predict_proba is not available
+                print(f"Prediction probabilities: {proba}")
+            else:
                 y_pred = model.predict(X)
                 pred_idx = int(y_pred[0])
+                print(f"Direct prediction: {y_pred}")
 
-            # Map class index (0–3) -> tone label (1–4)
-            self.production_response = pred_idx + 1 if pred_idx in (0, 1, 2, 3) else pred_idx
+            # Map to tone (1-4)
+            self.production_response = pred_idx + 1
+            print(f"Final production response: {self.production_response}")
+            
         except Exception as e:
             print(f"Error during model prediction: {e}")
-            self.production_response = 0 # Default on prediction error
+            self.production_response = 0
         
     def clear_feedback_enable_buttons(self):
         self.feedback_label.clear()
