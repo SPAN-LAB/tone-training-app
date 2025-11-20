@@ -8,8 +8,9 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButt
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QKeyEvent, QFont, QImage, QPixmap
 
+import joblib
 import sounddevice as sd
-import soundfile as sf
+import soundfile as sfp
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns # TODO: Install seaborn when bundle executable
@@ -17,7 +18,7 @@ import numpy as np
 import librosa
 
 # import machine learning model for tone prediction
-from model_training.tone_prediction_model import load_tone_model
+#from model_training.tone_prediction_model import load_tone_model
 
 # universal path
 main_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..')) # navigates one-level up from the current directory

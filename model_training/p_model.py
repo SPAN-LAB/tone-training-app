@@ -170,8 +170,5 @@ def main():
     joblib.dump(svm_final, 'tone_pred_model.pkl')
 
 
-def load_tone_model(model_path):
-    return joblib.load(model_path)
-
 if __name__ == "__main__":
     main()
