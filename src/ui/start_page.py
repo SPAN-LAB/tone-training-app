@@ -51,6 +51,7 @@ class StartPage(QWidget):
                                        str, 
                                        int,
                                     #  int   # Uncomment for manual preset selection
+                                       dict, 
                                        )
     volume_check_signal = pyqtSignal(int)
     range_est_signal = pyqtSignal(int, str, str)
@@ -62,6 +63,17 @@ class StartPage(QWidget):
         self.sounds_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'resources', 'sounds')
         self.sounds = []
         self.generalization_sounds = []
+        
+        self.training_config = {
+            "trials_per_block": 20,         # How many trials before a break
+            "break_duration": 30,           # Duration of break in seconds
+            "feedback_duration": 1500,      # How long "Correct/Incorrect" stays on screen (ms)
+            "volume_factor": 0.3,           # Audio amplitude multiplier
+            "recording_countdown": 3,       # Countdown seconds before recording
+            "consecutive_correct_limit": 3, # Shuffles playlist after this many correct in a row
+            "isi_duration": 1000,           # Delay between feedback end and next sound (ms)
+            "generalization_feedback": 0    # 0 = No feedback, 1 = Show feedback during Gen blocks
+        }
 
         self.session_num = 1
         self.response_file_path = ""
@@ -141,9 +153,15 @@ class StartPage(QWidget):
         self.load_sounds_button = QPushButton("Load Training Sound Files")
         self.load_sounds_button.clicked.connect(self.load_sounds)
         button_layout.addWidget(self.load_sounds_button)
+        
         self.load_gen_sounds_button = QPushButton("Load Generalization Sound Files")
         self.load_gen_sounds_button.clicked.connect(self.load_generalization_sounds)
         button_layout.addWidget(self.load_gen_sounds_button)
+        
+        self.load_config_button = QPushButton("Load Configuration CSV: Default Configuration")
+        self.load_config_button.clicked.connect(self.load_config)
+        button_layout.addWidget(self.load_config_button)
+        
         self.start_button = QPushButton("Start Training")
         self.start_button.clicked.connect(self.volume_check)
         button_layout.addWidget(self.start_button)
@@ -172,6 +190,33 @@ class StartPage(QWidget):
         else:
             self.audio_input_device_label.hide()
             self.audio_input_device_combo.hide()
+            
+    def load_config(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Configuration CSV", self.sounds_dir, "CSV Files (*.csv)")
+        if file_path:
+            try:
+                with open(file_path, mode='r') as infile:
+                    reader = csv.reader(infile)
+                    for rows in reader:
+                        if len(rows) >= 2:
+                            k = rows[0].strip()
+                            v = rows[1].strip()
+                            # Try to convert to float/int
+                            try:
+                                if '.' in v:
+                                    self.training_config[k] = float(v)
+                                else:
+                                    self.training_config[k] = int(v)
+                            except ValueError:
+                                self.training_config[k] = v
+                
+                filename = os.path.basename(file_path)
+                self.load_config_button.setText(f"Using Custom Config: {filename}")
+                self.load_config_button.setStyleSheet("background-color: #ccffcc")
+                
+                QMessageBox.information(self, "Config Loaded", "Configuration loaded successfully!\n" + str(self.training_config))
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Could not load config: {e}")
 
     def playSound(self):
         """ 
@@ -306,7 +351,7 @@ class StartPage(QWidget):
             self.start_training()
 
     def start_training(self):
-        # (Unchanged)
+        print("DEBUG START PAGE: Sending config:", self.training_config)
         self.start_training_signal.emit(
             self.participant_id,
             self.training_type,
@@ -319,6 +364,7 @@ class StartPage(QWidget):
             self.response_file_path,
             self.session_tracking_file_path,
             self.selected_gender,
+            self.training_config
             # self.selected_preset
         )
 
@@ -351,9 +397,9 @@ class StartPage(QWidget):
         with open(self.response_file_path, mode="w", newline="") as csv_file:
             csv_writer = csv.writer(csv_file)
             if training != "Production Training":
-                csv_writer.writerow(["date", "audio_file", "response", "solution", "reaction_time", "block_type"])
+                csv_writer.writerow(["date", "audio_file", "response", "solution", "onset_reaction_time", "offset_reaction_time", "sound_duration", "block_type"])
             else:
-                csv_writer.writerow(["date", "audio_file", "response", "solution", "accuracy", "reaction_time", "block_type"])
+                csv_writer.writerow(["date", "audio_file", "response", "solution", "accuracy", "onset_reaction_time", "offset_reaction_time", "sound_duration", "block_type"])
         
         session_tracking_folder = os.path.join(training_folder, "session_tracking")
         os.makedirs(session_tracking_folder, exist_ok=True)

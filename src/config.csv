@@ -1,0 +1,9 @@
+parameter,value
+trials_per_block,2
+break_duration,100
+feedback_duration,150
+volume_factor,0.3
+recording_countdown,3
+consecutive_correct_limit,3
+isi_duration,1000
+generalization_feedback,0
