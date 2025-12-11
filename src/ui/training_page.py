@@ -21,7 +21,12 @@ import librosa
 #from model_training.tone_prediction_model import load_tone_model
 
 # universal path
-main_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..')) # navigates one-level up from the current directory
+if getattr(sys, 'frozen', False):
+    # Running as compiled exe
+    main_path = os.path.dirname(sys.executable)
+else:
+    # Running as python script
+    main_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..')) # navigates one-level up from the current directory
 
 # TODO: extract fundamental pitch of user using range_est.wav
 
@@ -344,7 +349,6 @@ class TrainingPage(QWidget):
                 self.current_sound_duration = len(data) / fs
                 self.sound_start_time = time.time()
                 self.sound_expected_end_time = self.sound_start_time + self.current_sound_duration
-                r
                 # Enable response buttons for perception training
                 if self.training_type != "Production Training":
                     self.prompt_label.setText("Select the sound you heard")

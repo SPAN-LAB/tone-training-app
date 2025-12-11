@@ -20,7 +20,7 @@ del /q *.spec 2>nul
 
 REM --- Build the Executable using PyInstaller ---
 echo Building the executable...
-pyinstaller --onefile --windowed ^
+python -m PyInstaller --onefile --windowed ^
     --name %APP_NAME% ^
     --hidden-import="sounddevice" ^
     --hidden-import="soundfile" ^
@@ -32,7 +32,7 @@ pyinstaller --onefile --windowed ^
     main.py
 
 REM --- Deactivate the Virtual Environment ---
-deactivate
+call deactivate
 
 echo.
 echo Build completed. The executable is in the "dist" folder.

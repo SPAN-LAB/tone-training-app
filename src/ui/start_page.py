@@ -369,12 +369,17 @@ class StartPage(QWidget):
         )
 
     def create_folders(self):
-        # (Unchanged)
         participant_id = self.participant_id
         training = self.training_type
 
-        # Use project-relative absolute main_path so all files are written deterministically
-        main_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        if getattr(sys, 'frozen', False):
+                # If running as an EXE, use the executable's directory
+                # The '..' is likely not needed if the exe is in the root dist folder, 
+                # but if you want it to save next to the exe, use this:
+                main_path = os.path.dirname(sys.executable)
+        else:
+            # If running as a script, use the standard method
+            main_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
         participant_folder = os.path.join(main_path, "participants", participant_id)
         os.makedirs(participant_folder, exist_ok=True)
