@@ -16,24 +16,16 @@ import matplotlib.pyplot as plt
 import seaborn as sns # TODO: Install seaborn when bundle executable
 import numpy as np
 import librosa
-
-# import machine learning model for tone prediction
-#from model_training.tone_prediction_model import load_tone_model
+from scipy.interpolate import PchipInterpolator
+import tensorflow as tf
 
 # universal path
-if getattr(sys, 'frozen', False):
-    # Running as compiled exe
-    main_path = os.path.dirname(sys.executable)
-else:
-    # Running as python script
-    main_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..')) # navigates one-level up from the current directory
-
-# TODO: extract fundamental pitch of user using range_est.wav
+main_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..')) # navigates one-level up from the current directory
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
+       
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
@@ -59,11 +51,7 @@ class TrainingPage(QWidget):
         self.is_recording = False  
         self.response_buttons = None
         self.start_time = None
-        self.sound_start_time = 0.0
-        self.sound_expected_end_time = 0.0
-        self.current_sound_duration = 0.0
         self.production_response = 0
-        self.production_accuracy = 0.0
         self.played_audio_cnt = 0
         self.session_num = 1
         self.blocks_plot = None
@@ -85,14 +73,17 @@ class TrainingPage(QWidget):
         self._play_thread = None
         # Counter for rows successfully written to the response CSV during the session
         self.response_rows_written = 0
+        # Lazy-loaded BILSTM artifacts
+        self._bilstm_model = None
+        self._bilstm_bundle = None
+        self.min_recording_db = -45.0
+        self._recording_too_quiet = False
 
         # Set focus policy to accept keyboard focus
         self.setFocusPolicy(Qt.StrongFocus)
 
-        # --- Features from training_page1.py ---
-        # Error message dialog
         self.error_dialog = QErrorMessage(self)
-        # --- End features from training_page1.py ---
+
 
 
     def setup_ui(self):
@@ -149,21 +140,35 @@ class TrainingPage(QWidget):
         self.prompt_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.prompt_label)
 
-        # Placeholder cross-correlation function plot
+        # Placeholder feedback label (used for ML feedback text)
         self.feedback_label = QLabel("Cross correlation plot")
-        # self.feedback_label = QLabel("The correct tone is ... You sounded like tone ...") # Uncomment after ML model implementation
         self.feedback_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.feedback_label)
 
-    def setup_training(self, participant_id, training_type, sounds, generalization_sounds, output_device_id, input_device_id, session_num, production_recording_path, response_file_path, session_tracking_file_path, gender, config=None): 
+    def setup_training(self, participant_id, training_type, sounds, generalization_sounds, output_device_id, input_device_id, session_num, production_recording_path, response_file_path, session_tracking_file_path, gender): 
         """
         Initialize and configure the training session.
 
         This method sets participant/session parameters, randomizes the sound recording stimuli order, 
         selects a pitch detection preset based on a range estimation recording, and prepares 
         the appropriate UI for the selected training type.
+
+        Args:
+            participant_id (str): Unique identifier for the participant.
+            training_type (str): Type of training ("Perception with Minimal Feedback",
+                                "Perception with Full Feedback", or "Production Training").
+            sounds (list[str]): List of sound file names to be used in the session.
+            output_device_id (int or str): Identifier for the audio output device.
+            input_device_id (int or str): Identifier for the audio input device.
+            session_num (int): Current session number for the participant.
+            production_recording_path (str): Directory path to save production recordings.
+            response_file_path (str): Path to the CSV file where responses are logged.
+            session_tracking_file_path (str): Path to the CSV file where session-level accuracy is tracked.
+
+        Returns:
+            None
         """
-        print("DEBUG TRAINING PAGE: Received config:", config)
+        
         self.participant_id = participant_id
         self.training_type = training_type
         self.sounds = sounds
@@ -177,24 +182,6 @@ class TrainingPage(QWidget):
         self.response_file_path = response_file_path
         self.session_tracking_file_path = session_tracking_file_path
         self.gender = gender
-        
-        default_config = {
-            "trials_per_block": 20, "break_duration": 30, "feedback_duration": 1500,
-            "volume_factor": 0.3, "recording_countdown": 3, "consecutive_correct_limit": 3,
-            "isi_duration": 1000, "generalization_feedback": 0
-        }
-        self.config = config if config else default_config
-
-        # Unpack variables for easier usage throughout the class
-        self.trials_per_block = int(self.config.get("trials_per_block", 20))
-        self.break_duration = int(self.config.get("break_duration", 30))
-        self.feedback_duration = int(self.config.get("feedback_duration", 1500))
-        self.volume_factor = float(self.config.get("volume_factor", 0.3))
-        self.rec_countdown = int(self.config.get("recording_countdown", 3))
-        self.consecutive_limit = int(self.config.get("consecutive_correct_limit", 3))
-        self.isi_duration = int(self.config.get("isi_duration", 1000))
-        self.show_gen_feedback = bool(int(self.config.get("generalization_feedback", 0)))
-        
         # Keep track of expected total number of stimuli (training + generalization)
         try:
             self.total_expected_sounds = len(sounds) + len(generalization_sounds)
@@ -204,40 +191,36 @@ class TrainingPage(QWidget):
         if production_recording_path:
             self.production_recording_path = production_recording_path
             print("in setup training function: ", self.production_recording_path)
-            # Check if range_est.wav exists before trying to use it
-            range_est_file = os.path.join(self.production_recording_path, 'range_est.wav')
-            if os.path.exists(range_est_file):
-                 self.preset = self.range_est(range_est_file) # Comment this out for manual preset selection
-            else:
-                print(f"Warning: range_est.wav not found at {range_est_file}. Defaulting to preset 1 (male).")
-                self.preset = 1 # Default to preset 1 if file is missing
-            # self.preset = preset  # Uncomment for manual preset selection and add parameter 'preset' in this function
-
+            
         # random shuffle audio files
         random.shuffle(self.sounds)
         
         if training_type == "Production Training":
             self.setup_production_training()
+            try:
+                # Preload model + normalization bundle to avoid UI stall on first evaluation.
+                self._load_bilstm_assets()
+            except Exception as e:
+                print(f"Warning: failed to preload BiLSTM assets: {e}")
         else:
             self.setup_ui()
 
-        QTimer.singleShot(self.isi_duration, self.play_sound)
+        QTimer.singleShot(1000, self.play_sound)  
 
-    # --- Methods from training_page1.py ---
+
     def disable_response_button(self):
         """Disables all response buttons."""
         if self.response_buttons is not None:
                 for button in self.response_buttons:
                     button.setEnabled(False)
-        # response_locked removed: disabling buttons is sufficient to prevent input
     
     def takeBreak(self):
         """Initiates the 30-second break."""
         self.disable_response_button()
-        self.start_countdown(self.break_duration, False)  # 30 seconds break
+        self.start_countdown(30, False)  # 30 seconds break
         self.played_audio_cnt = 0        # reset played audio file count to zero
         return
-    # --- End methods from training_page1.py ---
+
 
 
     def play_sound(self):
@@ -248,33 +231,24 @@ class TrainingPage(QWidget):
 
         print("in training page")
         print("session number: ", self.session_num)
-        print("production recording path: ", self.production_recording_path)
-        print("response file path: ", self.response_file_path)
-        print("session tracking file path: ", self.session_tracking_file_path)
-        print("total expected sounds (training + generalization):", getattr(self, "total_expected_sounds", None))
         
-        if self.sounds: # --- Check if TRAINING sounds are left ---
-            # Do not pop here; popping is handled once later to avoid skipping items.
+        if self.sounds: 
             pass
-        # ... (rest of the 'try/except' block for playing sound) ...
+
 
         elif self.generalization_sounds and not self.is_generalization_block:
-            # --- Training is done, START Generalization Block ---
+
             self.is_generalization_block = True
 
-            # Swap the main 'sounds' list with the generalization list
             self.sounds = self.generalization_sounds
-            self.generalization_sounds = [] # Clear the old one to prevent loops
+            self.generalization_sounds = []
 
-            # Shuffle the new generalization sounds
             random.shuffle(self.sounds)
 
             print(f"Starting generalization block: total generalization sounds moved = {len(self.sounds)}")
 
-            # Reset break counter
             self.played_audio_cnt = 0
 
-            # Notify the user
             self.prompt_label.setText("Starting Generalization Block...")
             self.feedback_label.setText("You will not receive feedback.")
             if self.response_buttons:
@@ -285,39 +259,34 @@ class TrainingPage(QWidget):
             return
 
         else:
-            # --- All sounds (training AND generalization) are done ---
+
             self.finish_training()
 
-        # The break logic is now handled in clear_feedback_enable_buttons
 
         if self.sounds:
-            if self.consecutiveTimesSolution >= self.consecutive_limit:
+            if self.consecutiveTimesSolution >= 3:
                 print("shuffled sound list because of consecutive solutions")
                 random.shuffle(self.sounds)
                 random.shuffle(self.sounds)
                 random.shuffle(self.sounds)
-            print("Consecutive Solutions: ", self.consecutiveTimesSolution)
+
             random.shuffle(self.sounds)
-            print("shuffled list once")
             self.current_sound = self.sounds.pop(0)
-            self.played_audio_cnt += 1  # increment count of played audio file
-            print(f"Selected sound: {self.current_sound} (remaining sounds: {len(self.sounds)})")
+            self.played_audio_cnt += 1  
+            print(f"Remaining sounds: {len(self.sounds)})")
 
             try:    
-                # if self.response_buttons is not None:
-                #     pass
-                    # Disable Buttoons until playback finishes #######
-                    # for button in self.response_buttons:
-                    #     button.setEnabled(False)
+                if self.response_buttons is not None:
+                    for button in self.response_buttons:
+                        button.setEnabled(False)
                 self.feedback_label.clear()
 
-                # --- MODIFIED: Replaced hardcoded R:\ path with logic from training_page1.py ---
-                # Assumes self.current_sound is a full file path provided during setup.
+              
                 full_path = self.current_sound
 
-                # Append .mp3 extension if missing
                 if not full_path.lower().endswith(".mp3"):
                     full_path += ".mp3"  
+
 
                 # Check if the file actually exists
                 if not os.path.isfile(full_path):
@@ -327,16 +296,16 @@ class TrainingPage(QWidget):
                 data, fs = sf.read(full_path, dtype="float32")
 
                 # Adjust volume of sound file
-                data *= self.volume_factor
+                volume_factor = 0.3
+                data *= volume_factor
 
                 # Start timer for reaction time
                 # Do not set start_time here for perception — set it when playback finishes
                 # For production training, start_time will be set when recording starts
 
-                # Stop previous thread if it's still running (best-effort)
                 if self._play_thread and self._play_thread.isRunning():
                     try:
-                        # Attempt a polite stop first
+                        
                         sd.stop()
                         self._play_thread.wait(100)
                     except Exception:
@@ -344,27 +313,14 @@ class TrainingPage(QWidget):
                             self._play_thread.terminate()
                         except Exception:
                             pass
-                        
-                # Calculate expected end time of sound playback
-                self.current_sound_duration = len(data) / fs
-                self.sound_start_time = time.time()
-                self.sound_expected_end_time = self.sound_start_time + self.current_sound_duration
-                # Enable response buttons for perception training
-                if self.training_type != "Production Training":
-                    self.prompt_label.setText("Select the sound you heard")
-                    if self.response_buttons is not None:
-                        for button in self.response_buttons:
-                            button.setEnabled(True)
-                            button.setStyleSheet("") # Clear previous highlights
-                            
-                            
-                # Play in background thread: pass data, sample rate, and device ID to the thread
+
+
                 self._play_thread = PlayThread(data, fs, device=self.audio_device_id)
 
-                # Connect the thread's finished signal to our handler
+          
                 self._play_thread.finished.connect(self.on_playback_finished)
 
-                # Start the thread (non-blocking)
+   
                 print(f"Playing audio: {os.path.basename(full_path)}")
                 self._play_thread.start()
 
@@ -378,7 +334,7 @@ class TrainingPage(QWidget):
             self.finish_training()
 
     def toggle_recording(self):
-        # Start or stop recording based on current state
+ 
         if not self.is_recording:
             self.start_recording()
         else:
@@ -388,22 +344,20 @@ class TrainingPage(QWidget):
         self.is_recording = True
         self.prompt_label.setText("Recording... Try to match the original sound")
 
-        # # Create session_recordings folder if it doesn't exist
+
         date = datetime.date.today()
-        # Use os.path.basename and os.path.splitext to safely get filename
+
         file = os.path.basename(self.current_sound)
         file = os.path.splitext(file)[0]
         
         self.production_recording_file = os.path.join(self.production_recording_path, f"{date}_{file}.wav")
 
-        # Set default device
         sd.default.device = (self.input_device_id, self.audio_device_id)  
 
-        # Start recording and countdown timer
-        # Record start time for reaction-time calculation at the moment recording begins
+     
         self.start_time = time.time()
-        self.recording = sd.rec(int(self.rec_countdown * 44100), samplerate=44100, channels=1)
-        self.start_countdown(self.rec_countdown, recording=True)
+        self.recording = sd.rec(int(3 * 44100), samplerate=44100, channels=1)
+        self.start_countdown(3, recording=True)
 
     def stop_recording(self):
         self.is_recording = False
@@ -412,11 +366,25 @@ class TrainingPage(QWidget):
         end_time = time.time()
         reaction_time = end_time - self.start_time if self.start_time else 0
 
-        # save user recording
+
         sf.write(self.production_recording_file, self.recording, 44100)
         self.prompt_label.setText("Recording complete. Analyzing...")
 
-        # provide feedback to user 
+        try:
+            audio = np.asarray(self.recording, dtype=np.float32).reshape(-1)
+            if audio.size == 0:
+                self._recording_too_quiet = True
+            else:
+                rms = float(np.sqrt(np.mean(np.square(audio))))
+                dbfs = 20.0 * np.log10(rms + 1e-8)
+                self._recording_too_quiet = dbfs < self.min_recording_db
+                if self._recording_too_quiet:
+                    print(f"Recording too quiet: {dbfs:.2f} dBFS (threshold {self.min_recording_db:.2f})")
+        except Exception as e:
+            print(f"Warning: could not compute recording loudness: {e}")
+            self._recording_too_quiet = False
+
+
         self.provide_feedback()
 
         # write to response file (TODO: move to other function, and change response file to be correlation scores)
@@ -430,16 +398,15 @@ class TrainingPage(QWidget):
         else:
             self.prompt_label.setText(f"Take a break! {self.remaining_time} seconds remaining")
 
-        # Create a timer that triggers every 1 second
+
         self.countdown_timer = QTimer(self)
         self.countdown_timer.timeout.connect(self.update_countdown)
         self.countdown_timer.start(1000)
     
-    # --- MODIFIED: Replaced with working version from training_page1.py ---
     def update_countdown(self):
         self.remaining_time -= 1
         if self.remaining_time > 0:
-            # update countdown according to the label itself
+
             if "Recording" in self.prompt_label.text():
                 self.prompt_label.setText(f"Recording... {self.remaining_time} seconds remaining")
             else:
@@ -449,37 +416,25 @@ class TrainingPage(QWidget):
             if "Recording" in self.prompt_label.text():
                 self.stop_recording() 
             else:
-                # This is the crucial part for the break timer
+
                 self.prompt_label.setText("Listen to the sound")
-                # Do not enable buttons here; keep them disabled until playback finishes.
-                QTimer.singleShot(1000, self.play_sound) # Restart playing
-    # --- End modification ---
+
+                QTimer.singleShot(1000, self.play_sound) 
+  
 
     def process_response(self, response):
-        # Guard: if no current sound is set, ignore spurious responses
+
         if not self.current_sound:
             print("Warning: process_response called but no current sound is active. Ignoring response.")
             return
-        
-        # Stop audio if user answers during playback ---
-        if self._play_thread and self._play_thread.isRunning():
-            sd.stop() # Stop the sound immediately
-            # We don't need to terminate the thread, sd.stop() usually makes it finish naturally
 
-        current_time = time.time()
 
-        # Disable response buttons after selection
         if self.response_buttons is not None:
             for button in self.response_buttons:
                 button.setEnabled(False)
 
-        # Calculate both reaction times ---
-        # Onset RT: Time from Sound Start -> Click
-        onset_rt = current_time - self.sound_start_time
-        
-        # Offset RT: Time from Sound End -> Click
-        # If clicked during sound, this will be negative (which is mathematically correct for offset logic)
-        offset_rt = current_time - self.sound_expected_end_time
+        end_time = time.time()
+        reaction_time = end_time - self.start_time if self.start_time else 0
 
         correct_answer = int(re.findall("[0-9]+", self.current_sound)[0])
         is_correct = response == correct_answer
@@ -492,29 +447,23 @@ class TrainingPage(QWidget):
         else:
             self.consecutiveTimesSolution = 0
         self.previousAnswer = correct_answer
-        # display feedback on screen 
+
         self.provide_feedback(is_correct, correct_answer)
 
-        # write to response file
-        self.write_response(
-            self.current_sound.split("/")[-1], 
-            onset_rt=onset_rt, 
-            offset_rt=offset_rt,
-            sound_duration=self.current_sound_duration,
-            response=response, 
-            solution=correct_answer
-        )
+        self.write_response(self.current_sound.split("/")[-1], 
+                            reaction_time, response=response, solution=correct_answer)
 
     def provide_feedback(self, is_correct=None, correct_answer=None):
         
-        if self.is_generalization_block and not self.show_gen_feedback:
+        if self.is_generalization_block:
             self.feedback_label.setText("Response recorded.")
-            # Timer to clear message and move to next sound
-            QTimer.singleShot(self.isi_duration, self.clear_feedback_enable_buttons)
-            return # <--- IMPORTANT: exit before giving other feedback
+
+            QTimer.singleShot(1500, self.clear_feedback_enable_buttons)
+            return 
     
         """
         Display feedback to the participant based on their response.
+        ... (rest of docstring) ...
         """
         if self.training_type == "Perception with Minimal Feedback":
             self.feedback_label.setText("Correct" if is_correct else "Incorrect")
@@ -527,20 +476,22 @@ class TrainingPage(QWidget):
             )
 
         elif self.training_type == "Production Training":
-            ### Lag graph ###
-
-            ### NEW: ML prediction feedback ###
+            
             try:
-                # Determine the target (played) tone from filename
+                if self._recording_too_quiet:
+                    self.feedback_label.setText("Recording too quiet. Please speak louder.")
+
+                    self.production_response = 0
+                    self._recording_too_quiet = False
+                    QTimer.singleShot(5000, self.clear_feedback_enable_buttons)
+                    return
+
+                #target
                 played_tone = int(re.search(r"\d+", self.current_sound).group())
 
-                # Run the tone evaluator on the just-recorded WAV
                 self.tone_evaluation()
 
-                # Calculate accuracy
-                self.production_accuracy = 1.0 if int(self.production_response) == int(played_tone) else 0.0
 
-                # Compose text feedback
                 if int(self.production_response) == int(played_tone):
                     msg = f"Correct! You produced tone {played_tone}."
                 else:
@@ -549,175 +500,248 @@ class TrainingPage(QWidget):
                 self.feedback_label.setText(msg)
 
             except Exception as e:
-                # If anything goes wrong, show a simple error message
                 self.feedback_label.setText(f"Could not evaluate tone: {e}")
                 self.production_accuracy = 0.0
 
-        # Hide feedback and enable buttons before moving to the next audio file
         if self.training_type == "Production Training":
             QTimer.singleShot(5000, self.clear_feedback_enable_buttons)
         else:
-            QTimer.singleShot(self.feedback_duration, self.clear_feedback_enable_buttons)
+            QTimer.singleShot(1500, self.clear_feedback_enable_buttons)
             
     def on_playback_finished(self):
         """
         Slot connected to the PlayThread.finished signal.
         This runs on the main thread after audio playback is complete.
         """
-        # This logic was moved from the end of the `play_sound` method
+       
         if self.training_type == "Production Training":
             self.prompt_label.setText("Try to reproduce the sound")
             # For production, start recording — start_recording() will set start_time
             self.toggle_recording()
         else:
             # For perception, mark start_time when playback finished so reaction_time is accurate
+            self.start_time = time.time()
             self.prompt_label.setText("Select the sound you heard")
-            pass
 
+            if self.response_buttons is not None:
+                for button in self.response_buttons:
+                    button.setEnabled(True)
 
-    def extract_fundamental_pitch(self, audio): #CHECK, for production
+    def _gender_label(self):
+        if isinstance(self.gender, str):
+            value = self.gender.strip().lower()
+            if value in ("female", "f", "1"):
+                return "female"
+            if value in ("male", "m", "0"):
+                return "male"
+        return "female" if int(self.gender) == 1 else "male"
+
+    # extended pitch bounds for mandarin tones
+    def _pitch_bounds_for_gender(self, gender):
+        if gender == "female":
+            return 100.0, 300.0
+        if gender == "male":
+            return 70.0, 200.0 
+        return 70.0, 250.0
+
+    # Same BiLSTM pipeline
+    def _interpolate_out_of_bounds_pitch(self, f0, fmin, fmax):
+        if f0.size == 0:
+            return f0
+
+        voiced_mask = f0 > 0
+        valid_mask = voiced_mask & (f0 >= fmin) & (f0 <= fmax)
+        if valid_mask.all():
+            return f0
+
+        f0_clean = f0.astype(np.float32, copy=True)
+        valid_idx = np.nonzero(valid_mask)[0]
+        if valid_idx.size == 0:
+            f0_clean[voiced_mask] = np.clip(f0_clean[voiced_mask], fmin, fmax)
+            return f0_clean
+
+        if valid_idx.size == 1:
+            fill_value = np.clip(f0_clean[valid_idx[0]], fmin, fmax)
+            f0_clean[voiced_mask & ~valid_mask] = fill_value
+            return f0_clean
+
+        interpolator = PchipInterpolator(valid_idx, f0_clean[valid_idx], extrapolate=True)
+        interpolated = interpolator(np.arange(f0_clean.shape[0]))
+        replace_mask = voiced_mask & ~valid_mask
+        f0_clean[replace_mask] = np.clip(interpolated[replace_mask], fmin, fmax)
+        return f0_clean
+
+    def extract_fundamental_pitch(self, audio):
         """
-        Extract and normalize the fundamental frequency (f0) contour from an audio file.
+        Extracts f0 with a noise gate (0.005) (specifically for tone 3)
         """
         try:
-            y, sr = librosa.load(audio, sr=44100)  # Force consistent sample rate
+            # 1. Load at 22k
+            y, sr = librosa.load(audio, sr=22050, mono=True)
         except Exception as e:
-            print(f"Error loading audio file {audio}: {e}")
-            return pd.Series(dtype=np.float64)
+            print(f"Error loading audio: {e}")
+            return np.array([])
 
-        # Apply some basic audio preprocessing
-        y = librosa.util.normalize(y)  # Normalize audio volume #TODO
+        # 2. Calculate Energy
+        rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
         
-        # Use yin with better parameters for speech
-        f0 = librosa.yin(audio, fmin=60, fmax=400, sr=sr)
-        f0 = librosa.yin(
-            y, 
-            fmin=60, 
-            fmax=500, 
-            sr=sr,
-            frame_length=2048,  # Match training parameters if possible
-            hop_length=512,
-            trough_threshold=0.1  # Default YIN parameter
-        )
 
-        f0 = np.nan_to_num(f0, nan=0.0)  # handle undefined frames
+        silence_threshold = 0.005 
         
-        times = librosa.times_like(f0, sr=sr, hop_length=512)
-        return pd.Series(f0, index=times) 
+        # Check if the recording is effectively empty
+        if np.max(rms) < silence_threshold:
+            print("Warning: Audio is too quiet (Max RMS below threshold).")
+            silence_threshold = 0.0
 
-    def range_est(self, audio):
-        """
-        Estimate the vocal range (male/female preset) based on mean pitch from audio.
-        ... (rest of docstring) ...
-        """
-        y, sr = librosa.load(audio)
-        # Use a wide pitch range to cover both male and female voices
-        f0 = librosa.yin(y, fmin=60, fmax=500, sr=sr)
-        f0 = f0[~np.isnan(f0)]
-        if len(f0) == 0:
-            print("Warning: No valid pitch detected for range estimation. Defaulting to preset 1 (male).")
-            return 1 # Default to preset 1
-        mean_pitch = np.mean(f0)
+        # 3. Extract Pitch
+        gender_label = self._gender_label()
+        fmin, fmax = (70, 250) if gender_label == "male" else (100, 400)
 
-        # 180-200Hz is overlapping zone for male and female voice, take the mean of 180 + 200 = 190Hz
-        return 1 if mean_pitch < 190 else 2
+        f0 = librosa.yin(y, fmin=fmin, fmax=fmax, sr=sr, frame_length=2048, hop_length=512)
+        f0 = np.nan_to_num(f0, nan=0.0)
+        
+        # 4. Apply Noise Gate
+        # Resize RMS to match f0 length
+        if len(rms) > len(f0):
+            rms = rms[:len(f0)]
+        elif len(rms) < len(f0):
+            rms = np.pad(rms, (0, len(f0) - len(rms)))
+            
+        f0[rms < silence_threshold] = 0.0
 
+        # 5. Smooth (Median Filter) - removes single-frame glitches
+        import scipy.signal
+        if np.any(f0 > 0):
+             f0 = scipy.signal.medfilt(f0, kernel_size=3)
+
+        return f0
+
+    def _load_bilstm_assets(self):
+        if self._bilstm_bundle is None:
+            bundle_candidates = [
+                resource_path("tone_bilstm.pkl"),
+                os.path.join(main_path, "model_training", "tone_bilstm.pkl"),
+                os.path.join(os.path.dirname(main_path), "tone_bilstm.pkl"),
+            ]
+            bundle_path = next((p for p in bundle_candidates if os.path.exists(p)), None)
+            if not bundle_path:
+                raise FileNotFoundError("tone_bilstm.pkl not found in expected locations.")
+            self._bilstm_bundle = joblib.load(bundle_path)
+
+        if self._bilstm_model is None:
+            model_candidates = [
+                resource_path("tone_bilstm_model.keras"),
+                os.path.join(main_path, "model_training", "tone_bilstm_model.keras"),
+                os.path.join(os.path.dirname(main_path), "tone_bilstm_model.keras"),
+            ]
+            model_path = next((p for p in model_candidates if os.path.exists(p)), None)
+            if not model_path:
+                raise FileNotFoundError("tone_bilstm_model.keras not found in expected locations.")
+            self._bilstm_model = tf.keras.models.load_model(model_path)
+    
     def tone_evaluation(self):
         """
-        Predict the tone using the SAME feature extraction as during training
+        Robust Tone Evaluation:
+        1. Extracts Pitch
+        2. TRIMS SILENCE (Crucial fix for 3s recordings)
+        3. Applies Instance Normalization
+        4. Predicts
         """
         audio_path = getattr(self, "production_recording_file", None)
         if not audio_path or not os.path.exists(audio_path):
-            raise FileNotFoundError(f"Recording not found: {audio_path}")
-
-        # 1. Extract raw pitch values using YIN (no normalization!)
-        f0_series = self.extract_fundamental_pitch(audio_path)
-        if f0_series is None or len(f0_series) == 0:
-            print("Warning: No valid f0 extracted. Defaulting prediction to 0.")
-            self.production_response = 0
+            print("Error: Recording file missing.")
             return
 
-        f0 = f0_series.values
+        # 1. Extract raw pitch
+        f0 = self.extract_fundamental_pitch(audio_path)
+    
+        # Check if we found any pitch at all
+        if f0 is None or np.sum(f0) == 0:
+            print("Warning: No pitch detected in recording.")
+            self.production_response = 0
+            self.feedback_label.setText("Speaker volume too low")
+            return
 
-        # 2. Extract the SAME 10 statistical features used in training
-        f0_clean = f0[f0 > 0]  # Remove unvoiced frames (0 values)
+        voiced_indices = np.nonzero(f0)[0]
         
-        features = []
-        if len(f0_clean) > 0:
-            # Extract the exact same features as in training
-            features.extend([
-                np.mean(f0_clean),           # Average pitch
-                np.std(f0_clean),            # Pitch variability  
-                np.median(f0_clean),         # Robust central tendency
-                np.max(f0_clean),            # Maximum pitch
-                np.min(f0_clean),            # Minimum pitch
-                np.ptp(f0_clean),            # Pitch range (max - min)
-            ])
-            # Add quartiles (same as training)
-            if len(f0_clean) > 3:
-                features.extend(np.percentile(f0_clean, [25, 50, 75, 90]).tolist())
-            else:
-                features.extend([0, 0, 0, 0])
-        else:
-            # If no voiced frames, use zeros (same as training)
-            features.extend([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        if voiced_indices.size == 0:
+            self.production_response = 0
+            return
+            
+        start_idx = voiced_indices[0]
+        end_idx = voiced_indices[-1]
         
-        
-        X = np.array(features, dtype=np.float32).reshape(1, -1)
-        
-        print(f"Extracted features shape: {X.shape}")  # Should be (1, 10)
-        print(f"Features: {features}")
+        # Slice the array to keep only the voiced part
+        f0_trimmed = f0[start_idx : end_idx + 1]
 
-        # 3. Load and predict
+
         try:
-            model_path = os.path.join(main_path, 'model_training', 'tone_pred_model.pkl')
-            
-            if not os.path.exists(model_path):
-                raise FileNotFoundError(f"Model file not found at: {model_path}")
+            self._load_bilstm_assets()
+            max_length = int(self._bilstm_bundle.get("max_length", 0))
+
+            # 2. Instance Normalization on the TRIMMED sequence
+            seq = f0_trimmed.astype(np.float32)
+            mask = seq > 0 
+            norm_seq = np.zeros_like(seq, dtype=np.float32)
+
+            if np.any(mask):
+                clip_mean = np.mean(seq[mask])
+                clip_std = np.std(seq[mask])
+                if clip_std < 1e-6: clip_std = 1e-6
                 
-            model = joblib.load(model_path)
-            
-            # Verify feature count matches
-            expected_features = getattr(model, "n_features_in_", 10)
-            if X.shape[1] != expected_features:
-                print(f"ERROR: Model expects {expected_features} features, got {X.shape[1]}")
-                self.production_response = 0
-                return
+                norm_seq[mask] = (seq[mask] - clip_mean) / clip_std
 
-            # Predict
-            if hasattr(model, "predict_proba"):
-                proba = model.predict_proba(X)[0]
-                pred_idx = int(np.argmax(proba))
-                print(f"Prediction probabilities: {proba}")
+            # 3. Pad/Truncate correctly
+            if len(norm_seq) >= max_length:
+                padded = norm_seq[:max_length]
             else:
-                y_pred = model.predict(X)
-                pred_idx = int(y_pred[0])
-                print(f"Direct prediction: {y_pred}")
+                padded = np.zeros((max_length,), dtype=np.float32)
+                padded[: len(norm_seq)] = norm_seq
 
-            # Map to tone (1-4)
-            self.production_response = pred_idx + 1
-            print(f"Final tone prediction: {self.production_response}")
+           
+
+            # 4. Predict
+            X = np.expand_dims(padded, axis=(0, -1))
+
+            print("--- MODEL INPUT DEBUG ---")
+            print(f"Input shape: {X.shape}")
+            print(f"Non-zero values: {np.count_nonzero(X)}")
+            print(f"First 10 values: {X[0, :10, 0]}")
+            print("-------------------------")
+
+
+            proba = self._bilstm_model.predict(X, verbose=0)[0]
+            pred_idx = int(np.argmax(proba))
+            self.production_response = pred_idx + 1 # Convert 0-index to 1-4 tone
             
+            # Debugging print to see what happened
+            print(f"DEBUG: Original len: {len(f0)}, Trimmed len: {len(f0_trimmed)}")
+            print(f"DEBUG: Model Probabilities: {proba}")
+            print(f"DEBUG: Predicted Tone: {self.production_response}")
+
         except Exception as e:
             print(f"Error during model prediction: {e}")
+            import traceback
+            traceback.print_exc()
             self.production_response = 0
+    
 
     def clear_feedback_enable_buttons(self):
         self.feedback_label.clear()
         if self.response_buttons is not None:
             for button in self.response_buttons:
-                button.setStyleSheet("")  # remove highlight
+                button.setStyleSheet("")  
                 # keep buttons disabled here; they will be enabled when the next playback finishes
                 button.setEnabled(False)
         
         # Check if a break is due
-        if not (self.played_audio_cnt % self.trials_per_block == 0 and self.played_audio_cnt > 0 and self.sounds):
+        if not (self.played_audio_cnt % 20 == 0 and self.played_audio_cnt > 0 and self.sounds):
             self.prompt_label.setText("Listen to the sound")
-            QTimer.singleShot(self.isi_duration, self.play_sound)
+            QTimer.singleShot(1000, self.play_sound)
         else:
             self.takeBreak() # Call the working break function
         
-    def write_response(self, audio_file, onset_rt, offset_rt, sound_duration, response=0, solution=0, accuracy=0):
+    def write_response(self, audio_file, reaction_time, response=0, solution=0):
         """
         Log participant responses and session statistics to CSV files.
         ... (rest of docstring) ...
@@ -738,17 +762,8 @@ class TrainingPage(QWidget):
             csv_writer = csv.writer(csv_file)
 
             if self.training_type != "Production Training":
-                csv_writer.writerow([
-                    datetime.date.today(), 
-                    audio_file, 
-                    response, 
-                    solution, 
-                    round(onset_rt, 4), 
-                    round(offset_rt, 4), 
-                    round(sound_duration, 4),
-                    block_type
-                ])
-                print(f"WROTE ROW -> {audio_file}, OnsetRT={round(onset_rt,4)}, OffsetRT={round(offset_rt,4)}")
+                csv_writer.writerow([datetime.date.today(), audio_file, response, solution, round(reaction_time, 4), block_type])
+                print(f"Response -> {audio_file}, response={response}, solution={solution}")
                 try:
                     self.response_rows_written += 1
                 except Exception:
@@ -761,18 +776,8 @@ class TrainingPage(QWidget):
                 except Exception:
                     target_tone = solution if solution else 0
 
-                csv_writer.writerow([
-                    datetime.date.today(), 
-                    audio_file, 
-                    self.production_response, 
-                    target_tone, 
-                    self.production_accuracy, 
-                    round(onset_rt, 4), 
-                    round(offset_rt, 4), 
-                    round(sound_duration, 4),
-                    block_type
-                ])
-                print(f"WROTE ROW -> {audio_file}, OnsetRT={round(onset_rt,4)}, OffsetRT={round(offset_rt,4)}")
+                csv_writer.writerow([datetime.date.today(), audio_file, self.production_response, target_tone, round(reaction_time, 4), block_type])
+                print(f"WROTE ROW -> {audio_file}, production_response={self.production_response}, target={target_tone}, rt={round(reaction_time,4)}, type={block_type}")
                 try:
                     self.response_rows_written += 1
                 except Exception:
@@ -860,7 +865,7 @@ class TrainingPage(QWidget):
 
         # Ensure rows are in play order then assign block numbers (20 sounds per block)
         df = df.reset_index(drop=True)
-        files_per_block = self.trials_per_block
+        files_per_block = 20
         df["block"] = (df.index // files_per_block).astype(int) + 1
 
         # Compute per-row accuracy depending on training type
@@ -1003,3 +1008,5 @@ class TrainingPage(QWidget):
         # --- End modification ---
 
         self.end_training_signal.emit(self.participant_id, self.training_type, self.score, self.blocks_plot, self.sessions_plot)
+
+    
