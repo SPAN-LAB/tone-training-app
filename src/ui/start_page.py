@@ -60,7 +60,7 @@ class StartPage(QWidget):
         super().__init__(parent)
         self.setup_ui()
        
-        self.sounds_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'resources', 'sounds')
+        self.sounds_dir = os.path.abspath(os.getcwd())
         self.sounds = []
         self.generalization_sounds = []
         

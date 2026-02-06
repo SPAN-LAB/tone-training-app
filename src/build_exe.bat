@@ -6,30 +6,21 @@ set APP_NAME=ToneTrainingApp
 
 REM --- Activate your virtual environment ---
 echo Activating virtual environment...
-call venv\Scripts\activate
+call ..\venv\Scripts\activate
 
 REM --- Install Dependencies ---
 echo Installing dependencies...
 pip install --upgrade pip
+pip install -r ../requirements.txt
 pip install pyinstaller PyQt5 sounddevice soundfile numpy pandas matplotlib seaborn scipy scikit-learn
 
 REM --- Clean Previous Builds ---
 echo Cleaning previous builds...
 rmdir /s /q build dist 2>nul
-del /q *.spec 2>nul
 
 REM --- Build the Executable using PyInstaller ---
 echo Building the executable...
-python -m PyInstaller --onefile --windowed ^
-    --name %APP_NAME% ^
-    --hidden-import="sounddevice" ^
-    --hidden-import="soundfile" ^
-    --hidden-import="pandas" ^
-    --hidden-import="seaborn" ^
-    --hidden-import="sklearn" ^
-    --hidden-import="scipy" ^
-    --hidden-import="scipy._cyutility" ^
-    main.py
+python -m PyInstaller "%APP_NAME%.spec"
 
 REM --- Deactivate the Virtual Environment ---
 call deactivate
